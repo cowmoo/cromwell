@@ -4,6 +4,7 @@ import java.nio.file.{Files, Paths}
 
 import cromwell.engine.PathString
 import cromwell.engine.io.IoInterface
+import org.apache.commons.codec.digest.DigestUtils
 
 import scala.language.postfixOps
 import scala.util.Try
@@ -45,5 +46,5 @@ class SharedFileSystemIoInterface private() extends IoInterface {
     src.copyTo(dst)
   }
 
-  override def hash(path: String) = new File(Paths.get(path)).md5
+  override def hash(path: String) = DigestUtils.md5Hex(File(path).newInputStream)
 }

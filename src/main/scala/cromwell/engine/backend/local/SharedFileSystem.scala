@@ -16,6 +16,7 @@ import cromwell.engine.workflow.{BackendCallKey, WorkflowOptions}
 import cromwell.engine.{WorkflowContext, WorkflowDescriptor, WorkflowEngineFunctions, WorkflowId}
 import cromwell.engine._
 import cromwell.util.TryUtil
+import org.apache.commons.codec.digest.DigestUtils
 import org.apache.commons.io.FileUtils
 import org.apache.commons.lang3.exception.ExceptionUtils
 import wdl4s.types.{WdlArrayType, WdlFileType, WdlMapType}
@@ -91,8 +92,6 @@ object SharedFileSystem {
       else Files.createSymbolicLink(executionPath, srcPath.toAbsolutePath)
     }
   }
-
-  val sharedFsFileHasher: FileHasher = { wdlFile: WdlFile => SymbolHash(ScalaFile(wdlFile.value).md5) }
 }
 
 trait SharedFileSystem {
