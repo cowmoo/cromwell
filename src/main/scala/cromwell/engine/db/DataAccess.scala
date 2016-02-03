@@ -1,15 +1,15 @@
 package cromwell.engine.db
 
-import cromwell.engine.WorkflowOutputs
-import wdl4s._
 import cromwell.engine.ExecutionStatus.ExecutionStatus
-import cromwell.engine._
+import cromwell.engine.{WorkflowOutputs, _}
 import cromwell.engine.backend.{Backend, JobKey}
 import cromwell.engine.db.slick._
 import cromwell.engine.workflow.{BackendCallKey, ExecutionStoreKey, OutputKey}
 import cromwell.webservice.{CallCachingParameters, WorkflowQueryParameters, WorkflowQueryResponse}
+import wdl4s._
 
 import scala.concurrent.Future
+import scala.language.postfixOps
 
 object DataAccess {
   val globalDataAccess: DataAccess = new slick.SlickDataAccess()
@@ -33,9 +33,9 @@ trait DataAccess {
 
   def getWorkflowsByState(states: Traversable[WorkflowState]): Future[Traversable[WorkflowDescriptor]]
 
-  def getExecutionBackendInfo(workflowId: WorkflowId, call: Call): Future[CallBackendInfo]
+  def getExecutionBackendInfo(workflowId: WorkflowId, call: Call): Future[Map[String, Option[String]]]
 
-  def updateExecutionBackendInfo(workflowId: WorkflowId, callKey: BackendCallKey, backendInfo: CallBackendInfo): Future[Unit]
+  def updateExecutionInfo(workflowId: WorkflowId, callKey: BackendCallKey, key: String, value: Option[String]): Future[Unit]
 
   def updateWorkflowState(workflowId: WorkflowId, workflowState: WorkflowState): Future[Unit]
 
@@ -97,19 +97,17 @@ trait DataAccess {
 
   def getWorkflowExecutionAux(id: WorkflowId): Future[WorkflowExecutionAux]
 
-  def jesJobInfo(id: WorkflowId): Future[Map[ExecutionDatabaseKey, JesJob]]
-
-  def localJobInfo(id: WorkflowId): Future[Map[ExecutionDatabaseKey, LocalJob]]
-
-  def sgeJobInfo(id: WorkflowId): Future[Map[ExecutionDatabaseKey, SgeJob]]
-
   def updateWorkflowOptions(workflowId: WorkflowId, workflowOptionsJson: String): Future[Unit]
 
-  def resetNonResumableJesExecutions(workflowId: WorkflowId): Future[Unit]
+  def resetNonResumableExecutions(workflowId: WorkflowId, isResumable: ExecutionAndExecutionInfo => Boolean): Future[Unit]
 
-  def findResumableJesExecutions(workflowId: WorkflowId): Future[Map[ExecutionDatabaseKey, JobKey]]
+  def findResumableExecutions(workflowId: WorkflowId,
+                              isResumable: ExecutionAndExecutionInfo => Boolean,
+                              jobKeyBuilder: ExecutionAndExecutionInfo => JobKey): Future[Map[ExecutionDatabaseKey, JobKey]]
 
   def queryWorkflows(queryParameters: WorkflowQueryParameters): Future[WorkflowQueryResponse]
 
   def updateCallCaching(cachingParameters: CallCachingParameters): Future[Int]
+
+  def infosByExecution(id: WorkflowId): Future[Traversable[ExecutionInfosByExecution]]
 }

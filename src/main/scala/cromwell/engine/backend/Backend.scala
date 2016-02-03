@@ -160,4 +160,6 @@ trait Backend {
   lazy val dockerHashClient = new SprayDockerRegistryApiClient()(actorSystem)
 
   def pollBackoff: ExponentialBackOff
+
+  def executionInfoKeys: Seq[String]
 }

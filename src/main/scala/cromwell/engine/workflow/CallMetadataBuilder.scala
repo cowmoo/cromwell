@@ -1,12 +1,10 @@
 package cromwell.engine.workflow
 
-import wdl4s._
 import cromwell.engine.ExecutionIndex._
-import cromwell.engine.{ExecutionEventEntry, SymbolStoreEntry}
-import cromwell.engine.backend.{CallMetadata, CallLogs}
+import cromwell.engine.backend.{CallLogs, CallMetadata}
 import cromwell.engine.db.ExecutionDatabaseKey
 import cromwell.engine.db.slick._
-import cromwell.engine.EnhancedFullyQualifiedName
+import cromwell.engine.{EnhancedFullyQualifiedName, ExecutionEventEntry, SymbolStoreEntry, _}
 import org.joda.time.DateTime
 
 import scala.language.postfixOps
@@ -36,11 +34,14 @@ object CallMetadataBuilder {
   private type ExecutionMapTransformer = ExecutionMap => ExecutionMap
 
   object BackendValues {
-    def extract(job: Any): BackendValues = {
-      job match {
-        case ji: LocalJob => BackendValues("Local")
-        case ji: JesJob => BackendValues("JES", jobId = ji.jesRunId, status = ji.jesStatus)
-        case ji: SgeJob => BackendValues("SGE", jobId = ji.sgeJobNumber map { _.toString })
+    // FIXME needs to traverse the list of pluggable backends rather than hardcoding a list.
+    def extract(infos: ExecutionInfosByExecution): BackendValues = {
+      def extractValue(key: String): Option[String] = infos.executionInfos collectFirst { case i if i.key == key => i.value } flatten
+
+      infos.execution.backendType match {
+        case "Local" => BackendValues("Local", jobId = extractValue("PID"))
+        case "JES" => BackendValues("JES", jobId = extractValue("JES_RUN_ID"), status = extractValue("JES_STATUS"))
+        case "SGE" => BackendValues("SGE", jobId = extractValue("SGE_JOB_NUMBER"))
       }
     }
   }
@@ -110,14 +111,16 @@ object CallMetadataBuilder {
   /**
    * Function to build a transformer that adds job data to the entries in the input `ExecutionMap`.
    */
-  private def buildJobDataTransformer(executionKeys: Traversable[ExecutionDatabaseKey], jobMap: Map[ExecutionDatabaseKey, Any]): ExecutionMapTransformer =
+  private def buildExecutionInfoTransformer(executionsAndInfos: Traversable[ExecutionInfosByExecution]): ExecutionMapTransformer =
     executionMap => {
+      val allExecutions = executionsAndInfos map { _.execution }
       for {
-        (key, job) <- jobMap.toTraversable
-        if !key.fqn.isScatter && !key.isCollector(executionKeys)
-        baseMetadata = executionMap.get(key).get
-        backend = BackendValues.extract(job)
-      } yield key -> baseMetadata.copy(backend = Option(backend.name), jobId = backend.jobId, backendStatus = backend.status)
+        ei <- executionsAndInfos
+        e = ei.execution
+        if !e.isScatter && !e.isCollector(allExecutions)
+        baseMetadata = executionMap.get(e.toKey).get
+        backendValues = BackendValues.extract(ei)
+      } yield e.toKey -> baseMetadata.copy(backend = Option(e.backendType), jobId = backendValues.jobId, backendStatus = backendValues.status)
     }.toMap
 
   /**
@@ -155,22 +158,21 @@ object CallMetadataBuilder {
    *  Construct the map of `FullyQualifiedName`s to `Seq[CallMetadata]` that contains all the call metadata available
    *  for the specified parameters.
    */
-  def build(executions: Traversable[Execution],
+  def build(infosByExecution: Traversable[ExecutionInfosByExecution],
             standardStreamsMap: Map[FullyQualifiedName, Seq[CallLogs]],
             callInputs: Traversable[SymbolStoreEntry],
             callOutputs: Traversable[SymbolStoreEntry],
-            executionEvents: Map[ExecutionDatabaseKey, Seq[ExecutionEventEntry]],
-            jobMap: Map[ExecutionDatabaseKey, Any]): Map[FullyQualifiedName, Seq[CallMetadata]] = {
+            executionEvents: Map[ExecutionDatabaseKey, Seq[ExecutionEventEntry]]): Map[FullyQualifiedName, Seq[CallMetadata]] = {
 
-    val executionKeys = executions map { x => ExecutionDatabaseKey(x.callFqn, x.index.toIndex) }
+    val executionKeys = infosByExecution map { x => ExecutionDatabaseKey(x.execution.callFqn, x.execution.index.toIndex) }
 
     // Define a sequence of ExecutionMap transformer functions.
     val executionMapTransformers = Seq(
-      buildBaseTransformer(executions, executionKeys),
+      buildBaseTransformer(infosByExecution map { _.execution }, executionKeys),
       buildInputsTransformer(callInputs),
       buildOutputsTransformer(callOutputs),
       buildExecutionEventsTransformer(executionEvents),
-      buildJobDataTransformer(executionKeys, jobMap),
+      buildExecutionInfoTransformer(infosByExecution),
       buildStreamsTransformer(standardStreamsMap)
     )
 

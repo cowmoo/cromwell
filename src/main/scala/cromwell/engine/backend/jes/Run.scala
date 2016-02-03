@@ -7,7 +7,6 @@ import cromwell.engine.{ExecutionEventEntry, AbortFunction}
 import cromwell.engine.backend.jes.JesBackend.{JesInput, JesOutput, JesParameter}
 import cromwell.engine.backend.jes.Run.{Failed, Running, Success, _}
 import cromwell.engine.db.DataAccess._
-import cromwell.engine.db.{JesCallBackendInfo, JesId, JesStatus}
 import cromwell.engine.workflow.BackendCallKey
 import cromwell.logging.WorkflowLogger
 import cromwell.util.google.GoogleScopes
@@ -156,8 +155,9 @@ case class Run(runId: String, pipeline: Pipeline, logger: WorkflowLogger) {
       logger.info(s"Status change from $prevStateName to $currentStatus")
 
       // Update the database state:
-      val newBackendInfo = JesCallBackendInfo(Option(JesId(runId)), Option(JesStatus(currentStatus.toString)))
-      globalDataAccess.updateExecutionBackendInfo(workflowId, BackendCallKey(call, pipeline.key.index), newBackendInfo)
+      // TODO the database API should probably be returning DBIOs so callers can compose and wrap with a transaction.
+      globalDataAccess.updateExecutionInfo(workflowId, BackendCallKey(call, pipeline.key.index), "JES_RUN_ID", Option(runId))
+      globalDataAccess.updateExecutionInfo(workflowId, BackendCallKey(call, pipeline.key.index), "JES_STATUS", Option(currentStatus.toString))
 
       // If this has transitioned to a running or complete state from a state that is not running or complete,
       // register the abort function.

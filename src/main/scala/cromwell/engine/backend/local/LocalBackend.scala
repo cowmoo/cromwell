@@ -247,4 +247,6 @@ case class LocalBackend(actorSystem: ActorSystem) extends Backend with SharedFil
       }
     }
   }
+
+  override def executionInfoKeys: Seq[String] = Seq("PID")
 }
