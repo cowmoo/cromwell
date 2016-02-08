@@ -11,12 +11,7 @@ import scala.language.postfixOps
   * Actor to manage the execution of a single backend call.
   * */
 class BackendCallExecutionActor(backendCall: BackendCall) extends CallExecutionActor {
-  override val logger = WorkflowLogger(
-    this.getClass.getSimpleName,
-    backendCall.workflowDescriptor,
-    akkaLogger = Option(akkaLogger),
-    callTag = Option(backendCall.key.tag)
-  )
+  override val logger = WorkflowLogger(akkaLogger = Option(akkaLogger), callTag = Option(backendCall.key.tag))
 
   override val call = backendCall.call
   override def poll(handle: ExecutionHandle) = backendCall.poll(handle)

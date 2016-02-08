@@ -2,7 +2,6 @@ package cromwell.engine.workflow
 
 import akka.actor.{Actor, ActorRef, Props}
 import com.typesafe.scalalogging.LazyLogging
-import cromwell.engine.backend.CromwellBackend
 import cromwell.engine.backend.runtimeattributes.CromwellRuntimeAttributes
 import cromwell.util.TryUtil
 import wdl4s._
@@ -55,8 +54,8 @@ class ValidateActor(wdlSource: WdlSource, workflowInputs: Option[WdlJson], workf
   private def validateRuntimeOptions(call: Call,  workflowOptions: Option[String]): Try[CromwellRuntimeAttributes] = {
     workflowOptions match {
       case Some(wo) =>
-        WorkflowOptions.fromJsonString(wo) map { options => CromwellRuntimeAttributes(call.task.runtimeAttributes, options, CromwellBackend.backend().backendType) }
-      case None => Try(CromwellRuntimeAttributes(call.task.runtimeAttributes, CromwellBackend.backend.backendType))
+        WorkflowOptions.fromJsonString(wo) map { options => CromwellRuntimeAttributes(call.task.runtimeAttributes, options) }
+      case None => Try(CromwellRuntimeAttributes(call.task.runtimeAttributes))
     }
   }
 

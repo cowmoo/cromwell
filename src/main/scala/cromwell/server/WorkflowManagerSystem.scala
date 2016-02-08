@@ -2,7 +2,6 @@ package cromwell.server
 
 import akka.actor.ActorSystem
 import com.typesafe.config.ConfigFactory
-import cromwell.engine.backend.{Backend, CromwellBackend}
 import cromwell.engine.workflow.WorkflowManagerActor
 
 trait WorkflowManagerSystem {
@@ -18,7 +17,6 @@ trait WorkflowManagerSystem {
 
   def backendType: String = ConfigFactory.load.getConfig("backend").getString("backend")
 
-  lazy val backend: Backend = CromwellBackend.initBackend(backendType, actorSystem)
   // For now there's only one WorkflowManagerActor so no need to dynamically name it
-  lazy val workflowManagerActor = actorSystem.actorOf(WorkflowManagerActor.props(backend), "WorkflowManagerActor")
+  lazy val workflowManagerActor = actorSystem.actorOf(WorkflowManagerActor.props(), "WorkflowManagerActor")
 }

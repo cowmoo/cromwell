@@ -168,8 +168,8 @@ object WorkflowActor {
     override def replyTo: Option[ActorRef] = None
   }
 
-  def props(descriptor: WorkflowDescriptor, backend: Backend): Props = {
-    Props(WorkflowActor(descriptor, backend))
+  def props(descriptor: WorkflowDescriptor): Props = {
+    Props(WorkflowActor(descriptor))
   }
 
   case class WorkflowData(startMode: Option[StartMode] = None, pendingExecutions: Map[ExecutionStoreKey, Set[ExecutionStatus]] = Map.empty) {
@@ -227,7 +227,7 @@ object WorkflowActor {
   private val MarkdownMaxColumnChars = 100
 }
 
-case class WorkflowActor(workflow: WorkflowDescriptor, backend: Backend)
+case class WorkflowActor(workflow: WorkflowDescriptor)
   extends LoggingFSM[WorkflowState, WorkflowData] with CromwellActor {
 
   lazy implicit val hasher = workflow.fileHasher
@@ -238,7 +238,7 @@ case class WorkflowActor(workflow: WorkflowDescriptor, backend: Backend)
     // Currently assumes there is at most one possible final call, a `CopyWorkflowOutputsCall`.
     val finalCall = workflow.workflowOutputsPath.toOption map { _ => CopyWorkflowOutputsCall(workflow) }
     globalDataAccess.createWorkflow(
-      workflow, symbolStoreEntries, workflow.namespace.workflow.children ++ finalCall, backend)
+      workflow, symbolStoreEntries, workflow.namespace.workflow.children ++ finalCall)
   }
 
   // This is passed as an implicit parameter to methods of classes in the companion object.
@@ -246,7 +246,7 @@ case class WorkflowActor(workflow: WorkflowDescriptor, backend: Backend)
   implicit private var executionStore: ExecutionStore = _
   private var symbolCache: SymbolCache = _
   val akkaLogger = Logging(context.system, classOf[WorkflowActor])
-  implicit val logger: WorkflowLogger = WorkflowLogger("WorkflowActor", workflow, Option(akkaLogger))
+  implicit val logger: WorkflowLogger = WorkflowLogger(workflow, Option(akkaLogger))
 
   startWith(WorkflowSubmitted, WorkflowData())
   WorkflowCounter.increment()
@@ -274,7 +274,8 @@ case class WorkflowActor(workflow: WorkflowDescriptor, backend: Backend)
   private def scheduleTransition(toState: WorkflowState): Unit = {
     def handleTerminalWorkflow: Future[Unit] = {
       for {
-        _ <- backend.cleanUpForWorkflow(workflow)
+        // currently no concept of cleaning up on a per-workflow basis, is that okay?
+        // _ <- backend.cleanUpForWorkflow(workflow)
         _ <- globalDataAccess.updateWorkflowOptions(workflow.id, workflow.workflowOptions.clearEncryptedValues)
         _ = self ! Terminate
       } yield ()

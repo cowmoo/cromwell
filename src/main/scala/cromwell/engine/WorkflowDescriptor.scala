@@ -9,7 +9,7 @@ import ch.qos.logback.core.FileAppender
 import com.typesafe.config.{Config, ConfigFactory}
 import cromwell.engine.backend.jes.JesBackend
 import cromwell.engine.backend.runtimeattributes.CromwellRuntimeAttributes
-import cromwell.engine.backend.{Backend, BackendType, CromwellBackend}
+import cromwell.engine.backend.BackendType
 import cromwell.engine.db.DataAccess._
 import cromwell.engine.io.gcs.{GcsFileSystem, GoogleCloudStorage}
 import cromwell.engine.io.shared.SharedFileSystemIoInterface
@@ -39,7 +39,6 @@ case class WorkflowDescriptor(id: WorkflowId,
                               namespace: NamespaceWithWorkflow,
                               coercedInputs: WorkflowCoercedInputs,
                               declarations: WorkflowCoercedInputs,
-                              backend: Backend,
                               configCallCaching: Boolean,
                               lookupDockerHash: Boolean,
                               gcsInterface: Try[GoogleCloudStorage],
@@ -53,7 +52,7 @@ case class WorkflowDescriptor(id: WorkflowId,
   val actualInputs: WorkflowCoercedInputs = coercedInputs ++ declarations
   val props = sys.props
   val relativeWorkflowRootPath = s"$name/$id"
-  private val log = WorkflowLogger("WorkflowDescriptor", this)
+  private val log = WorkflowLogger(this)
   val workflowOutputsPath = workflowOptions.get("outputs_path") recover { case e: IllegalArgumentException =>
     log.warn("outputs_path expected to be of type String", e)
     throw e
@@ -101,7 +100,7 @@ case class WorkflowDescriptor(id: WorkflowId,
 
   private def copyOutputFiles(destDirectory: String)(implicit executionContext: ExecutionContext): Future[Unit] = {
     import PathString._
-    val logger = backend.workflowLogger(this)
+    val logger = WorkflowLogger(this)
 
     def copyFile(file: WdlFile): Try[Unit] = {
       val src = file.valueString.toPath(workflowLogger, gcsFilesystem)
@@ -188,7 +187,6 @@ object WorkflowDescriptor {
 
   private def validateWorkflowDescriptor(id: WorkflowId,
                                          sourceFiles: WorkflowSourceFiles,
-                                         backend: Backend,
                                          conf: Config): ErrorOr[WorkflowDescriptor] = {
     val namespace = validateNamespace(id, sourceFiles.wdlSource)
     val options = validateWorkflowOptions(id, sourceFiles.workflowOptionsJson, backend)

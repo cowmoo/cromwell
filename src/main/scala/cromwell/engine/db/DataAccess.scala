@@ -1,8 +1,9 @@
 package cromwell.engine.db
 
 import cromwell.engine.ExecutionStatus.ExecutionStatus
+import cromwell.engine.db.DataAccess.StdoutAndStderr
 import cromwell.engine.{WorkflowOutputs, _}
-import cromwell.engine.backend.{Backend, JobKey}
+import cromwell.engine.backend.JobKey
 import cromwell.engine.db.slick._
 import cromwell.engine.workflow.{BackendCallKey, ExecutionStoreKey, OutputKey}
 import cromwell.webservice.{CallCachingParameters, WorkflowQueryParameters, WorkflowQueryResponse}
@@ -13,17 +14,19 @@ import scala.language.postfixOps
 
 object DataAccess {
   val globalDataAccess: DataAccess = new slick.SlickDataAccess()
+  case class StdoutAndStderr(stdout: String, stderr: String)
 }
 
 trait DataAccess {
+  def standardOutAndError(descriptor: WorkflowDescriptor, callName: String, callLogKeys: Seq[ExecutionDatabaseKey]): Future[Traversable[StdoutAndStderr]] = ???
+
   /**
    * Creates a row in each of the backend-info specific tables for each call in `calls` corresponding to the backend
    * `backend`.  Or perhaps defer this?
    */
   def createWorkflow(workflowDescriptor: WorkflowDescriptor,
                      workflowInputs: Traversable[SymbolStoreEntry],
-                     calls: Traversable[Scope],
-                     backend: Backend): Future[Unit]
+                     calls: Traversable[Scope]): Future[Unit]
 
   def getWorkflowState(workflowId: WorkflowId): Future[Option[WorkflowState]]
 
@@ -80,7 +83,7 @@ trait DataAccess {
 
   def getExecutionStatus(workflowId: WorkflowId, key: ExecutionDatabaseKey): Future[Option[CallStatus]]
 
-  def insertCalls(workflowId: WorkflowId, keys: Traversable[ExecutionStoreKey], backend: Backend): Future[Unit]
+  def insertCalls(workflowId: WorkflowId, keys: Traversable[ExecutionStoreKey]): Future[Unit]
 
   /** Shutdown. NOTE: Should (internally or explicitly) use AsyncExecutor.shutdownExecutor.
     * TODO this is only called from a test. */

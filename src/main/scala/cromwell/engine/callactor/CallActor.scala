@@ -96,12 +96,7 @@ trait CallActor extends LoggingFSM[CallActorState, CallActorData] with CromwellA
 
   val call = key.scope
   val akkaLogger = Logging(context.system, classOf[CallActor])
-  val logger = WorkflowLogger(
-    "CallActor",
-    workflowDescriptor,
-    akkaLogger = Option(akkaLogger),
-    callTag = Option(key.tag)
-  )
+  val logger = WorkflowLogger(workflowDescriptor, akkaLogger = Option(akkaLogger), callTag = Option(key.tag))
 
   // Called on every state transition.
   onTransition {

@@ -21,12 +21,7 @@ object Pipeline {
             projectId: String,
             jesConnection: JesInterface,
             runIdForResumption: Option[String]): Pipeline = {
-    val logger = WorkflowLogger(
-      "JES Pipeline",
-      workflow,
-      otherLoggers = Seq(LoggerFactory.getLogger(getClass.getName)),
-      callTag = Option(key.tag)
-    )
+    val logger = WorkflowLogger(workflow, otherLoggers = Seq(LoggerFactory.getLogger(getClass.getName)), callTag = Option(key.tag))
 
     logger.debug(s"Command line is: $command")
     val runtimeInfo = JesRuntimeInfo(command, runtimeAttributes)

@@ -7,7 +7,7 @@ import com.typesafe.config.ConfigFactory
 import cromwell.engine
 import cromwell.engine.ExecutionIndex._
 import cromwell.engine.ExecutionStatus.ExecutionStatus
-import cromwell.engine.backend.{Backend, CallLogs, CallMetadata}
+import cromwell.engine.backend.{CallLogs, CallMetadata}
 import cromwell.engine.db.DataAccess._
 import cromwell.engine.db.ExecutionDatabaseKey
 import cromwell.engine.db.slick._
@@ -20,6 +20,7 @@ import lenthall.config.ScalaConfig.EnhancedScalaConfig
 import org.joda.time.DateTime
 import spray.json._
 import wdl4s._
+import wdl4s.values.WdlFile
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
@@ -50,7 +51,7 @@ object WorkflowManagerActor {
   final case class CallCaching(id: WorkflowId, parameters: QueryParameters, call: Option[String]) extends WorkflowManagerActorMessage
   case object AbortAllWorkflows extends WorkflowManagerActorMessage
 
-  def props(backend: Backend): Props = Props(new WorkflowManagerActor(backend))
+  def props(): Props = Props(new WorkflowManagerActor())
 
   // FIXME hack to deal with one class of "singularity" where Cromwell isn't smart enough to launch only
   // as much work as can reasonably be handled.
@@ -84,7 +85,7 @@ object WorkflowManagerActor {
  * WorkflowOutputs: Returns a `Future[Option[binding.WorkflowOutputs]]` aka `Future[Option[Map[String, WdlValue]]`
  *
  */
-class WorkflowManagerActor(backend: Backend) extends LoggingFSM[WorkflowManagerState, WorkflowManagerData] with CromwellActor {
+class WorkflowManagerActor() extends LoggingFSM[WorkflowManagerState, WorkflowManagerData] with CromwellActor {
   private val logger = Logging(context.system, this)
   private val tag = "WorkflowManagerActor"
 
@@ -307,45 +308,43 @@ class WorkflowManagerActor(backend: Backend) extends LoggingFSM[WorkflowManagerS
     !key.fqn.isScatter && !key.isCollector(entries)
   }
 
-  private def callStdoutStderr(workflowId: WorkflowId, callFqn: String): Future[Seq[CallLogs]] = {
-    def callKey(descriptor: WorkflowDescriptor, callName: String, key: ExecutionDatabaseKey) =
-      BackendCallKey(descriptor.namespace.workflow.findCallByName(callName).get, key.index)
-    def backendCallFromKey(descriptor: WorkflowDescriptor, callName: String, key: ExecutionDatabaseKey) =
-      backend.bindCall(descriptor, callKey(descriptor, callName, key))
+  /** This will return data for all shards for the specified `callFqn`, thus the `Traversable` in the return type. */
+  private def callStdoutStderr(workflowId: WorkflowId, callFqn: String): Future[Traversable[CallLogs]] = {
     for {
         _ <- assertWorkflowExistence(workflowId)
         descriptor <- globalDataAccess.getWorkflow(workflowId)
         _ <- assertCallExistence(workflowId, callFqn)
         callName <- Future.fromTry(assertCallFqnWellFormed(descriptor, callFqn))
         callLogKeys <- getCallLogKeys(workflowId, callFqn)
-        callStandardOutput <- Future.successful(callLogKeys.map(key => backendCallFromKey(descriptor, callName, key)).map(_.stdoutStderr))
-      } yield callStandardOutput
+        stdoutStderrs <- globalDataAccess.standardOutAndError(descriptor, callName, callLogKeys)
+        logs = stdoutStderrs map { s => CallLogs(WdlFile(s.stdout), WdlFile(s.stderr)) }
+      } yield logs
   }
 
-  private def workflowStdoutStderr(workflowId: WorkflowId): Future[Map[FullyQualifiedName, Seq[CallLogs]]] = {
-    def logMapFromStatusMap(descriptor: WorkflowDescriptor, statusMap: Map[ExecutionDatabaseKey, ExecutionStatus]): Try[Map[FullyQualifiedName, Seq[CallLogs]]] = {
-      Try {
-        val sortedMap = statusMap.toSeq.sortBy(_._1.index)
-        val callsToPaths = for {
-          (key, status) <- sortedMap if hasLogs(statusMap.keys)(key)
-          callName = assertCallFqnWellFormed(descriptor, key.fqn).get
-          callKey = BackendCallKey(descriptor.namespace.workflow.findCallByName(callName).get, key.index)
-          backendCall = backend.bindCall(descriptor, callKey)
-          callStandardOutput = backend.stdoutStderr(backendCall)
-        } yield key.fqn -> callStandardOutput
-
-        callsToPaths groupBy { _._1 } mapValues { v => v map { _._2 } }
-      }
-    }
-
-    for {
-      _ <- assertWorkflowExistence(workflowId)
-      descriptor <- globalDataAccess.getWorkflow(workflowId)
-      callToStatusMap <- globalDataAccess.getExecutionStatuses(workflowId)
-      x = callToStatusMap mapValues { _.executionStatus }
-      callToLogsMap <- Future.fromTry(logMapFromStatusMap(descriptor, callToStatusMap mapValues { _.executionStatus }))
-    } yield callToLogsMap
-  }
+  private def workflowStdoutStderr(workflowId: WorkflowId): Future[Map[FullyQualifiedName, Seq[CallLogs]]] = ??? // {
+//    def logMapFromStatusMap(descriptor: WorkflowDescriptor, statusMap: Map[ExecutionDatabaseKey, ExecutionStatus]): Try[Map[FullyQualifiedName, Seq[CallLogs]]] = {
+//      Try {
+//        val sortedMap = statusMap.toSeq.sortBy(_._1.index)
+//        val callsToPaths = for {
+//          (key, status) <- sortedMap if hasLogs(statusMap.keys)(key)
+//          callName = assertCallFqnWellFormed(descriptor, key.fqn).get
+//          callKey = BackendCallKey(descriptor.namespace.workflow.findCallByName(callName).get, key.index)
+//          backendCall = backend.bindCall(descriptor, callKey)
+//          callStandardOutput = backend.stdoutStderr(backendCall)
+//        } yield key.fqn -> callStandardOutput
+//
+//        callsToPaths groupBy { _._1 } mapValues { v => v map { _._2 } }
+//      }
+//    }
+//
+//    for {
+//      _ <- assertWorkflowExistence(workflowId)
+//      descriptor <- globalDataAccess.getWorkflow(workflowId)
+//      callToStatusMap <- globalDataAccess.getExecutionStatuses(workflowId)
+//      x = callToStatusMap mapValues { _.executionStatus }
+//      callToLogsMap <- Future.fromTry(logMapFromStatusMap(descriptor, callToStatusMap mapValues { _.executionStatus }))
+//    } yield callToLogsMap
+//  }
 
   private def buildWorkflowMetadata(workflowExecution: WorkflowExecution,
                                     workflowExecutionAux: WorkflowExecutionAux,
@@ -401,7 +400,7 @@ class WorkflowManagerActor(backend: Backend) extends LoggingFSM[WorkflowManagerS
 
     val actorAndData = for {
       descriptor <- Try(WorkflowDescriptor(workflowId, source))
-      actor = context.actorOf(WorkflowActor.props(descriptor, backend), s"WorkflowActor-$workflowId")
+      actor = context.actorOf(WorkflowActor.props(descriptor), s"WorkflowActor-$workflowId")
       _ = actor ! SubscribeTransitionCallBack(self)
       data = stateData.add(workflowId -> actor)
     } yield ActorAndStateData(actor, data)

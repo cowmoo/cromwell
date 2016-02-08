@@ -25,8 +25,7 @@ import org.slf4j.Logger
  * Each log method called (e.g. warn(), error()) will log to all the
  * above locations
  */
-case class WorkflowLogger(caller: String,
-                          descriptor: WorkflowDescriptor,
+case class WorkflowLogger(descriptor: WorkflowDescriptor,
                           akkaLogger: Option[LoggingAdapter] = None,
                           otherLoggers: Seq[Logger] = Seq.empty[Logger],
                           callTag: Option[String] = None) {
@@ -34,7 +33,7 @@ case class WorkflowLogger(caller: String,
 
   val tag: String = {
     val subtag = callTag.map(c => s":$c").getOrElse("")
-    s"$caller [UUID(${descriptor.shortId})$subtag]"
+    s"[UUID(${descriptor.shortId})$subtag]"
   }
 
   private def format(msg: String): String = s"$tag: $msg"

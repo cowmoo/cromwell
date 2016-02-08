@@ -24,12 +24,7 @@ object Run  {
   val PollingBackoffFactor = 1.1
 
   def apply(pipeline: Pipeline): Run = {
-    val logger = WorkflowLogger(
-      "JES Run",
-      pipeline.workflow,
-      otherLoggers = Seq(LoggerFactory.getLogger(getClass.getName)),
-      callTag = Option(pipeline.key.tag)
-    )
+    val logger = WorkflowLogger(pipeline.workflow, otherLoggers = Seq(LoggerFactory.getLogger(getClass.getName)), callTag = Option(pipeline.key.tag))
 
     if (pipeline.pipelineId.isDefined == pipeline.runIdForResumption.isDefined) {
       val message =
