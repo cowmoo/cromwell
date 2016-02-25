@@ -396,7 +396,7 @@ case class WorkflowActor(workflow: WorkflowDescriptor, backend: Backend)
       case Failure(e) =>
         logger.error(s"Preemption work failed for call ${callKey.tag}! " + e.getMessage, e)
         currentSender ! CallActor.Ack(message)
-        self ! CheckForWorkflowComplete
+        self ! CallFailedNonRetryable(callKey, Seq.empty, returnCode, e.getMessage)
       case Success(_) =>
         self ! PersistStatus(callKey, retryStatus, None, returnCode, None, None, currentSender, message)
     }
