@@ -18,7 +18,9 @@ val googleClientApiV = "1.20.0"
 
 // Common dependencies shared between multiple projects
 // TODO: Currently this is empty, will immediately grow the moment we add code to cromwell-backend
-val commonDependencies = List()
+// TODO: The test stuff will almost surely need to be here once MainSpec moves
+val commonDependencies = List(
+)
 
 // TODO: It is expected that multiple engineDeps will wind up in commonDeps very rapidly
 val engineDependencies = List(
@@ -148,16 +150,12 @@ val commonSettings = List(
 ) ++ releaseSettings
 
 // Cromwell Backend
-lazy val CromwellBackend = Project(id = "CromwellBackend", base = file("cromwell-backend"))
+lazy val backend = Project(id = "CromwellBackend", base = file("backend"))
   .settings(commonSettings: _*)
-  .disablePlugins(sbtassembly.AssemblyPlugin)
 
-
-// Root project
-// NOTE: The following block may cause problems with IntelliJ IDEA
-// by creating multiple test configurations.
-// May need to comment out when importing the project.
-lazy val root = Project(id = "Cromwell", base = file(".")).aggregate(CromwellBackend).dependsOn(CromwellBackend)
+lazy val engine = Project(id = "CromwellEngine", base = file("engine"))
+  .aggregate(backend)
+  .dependsOn(backend)
   .settings(commonSettings: _*)
   .settings(libraryDependencies ++= engineDependencies)
   .settings(libraryDependencies ++= kamonDependencies)
@@ -168,6 +166,16 @@ lazy val root = Project(id = "Cromwell", base = file(".")).aggregate(CromwellBac
   .configs(CromwellIntegrationTest).settings(inConfig(CromwellIntegrationTest)(Defaults.testTasks): _*)
   .configs(CromwellNoIntegrationTest).settings(inConfig(CromwellNoIntegrationTest)(Defaults.testTasks): _*)
 
+// Root project
+// NOTE: The following block may cause problems with IntelliJ IDEA
+// by creating multiple test configurations.
+// May need to comment out when importing the project.
+lazy val root = Project(id = "Cromwell", base = file("."))
+  .aggregate(backend, engine)
+  .dependsOn(backend, engine)
+  .settings(commonSettings: _*)
+  .settings(libraryDependencies ++= engineDependencies)
+  .settings(libraryDependencies ++= kamonDependencies)
 
 // Merge strategies and such
 packageOptions in assembly += Package.ManifestAttributes("Premain-Class" -> "org.aspectj.weaver.loadtime.Agent")
