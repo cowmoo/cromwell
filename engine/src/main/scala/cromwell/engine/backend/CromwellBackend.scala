@@ -1,6 +1,7 @@
 package cromwell.engine.backend
 
-import akka.actor.ActorSystem
+import akka.actor.{Props, ActorSystem}
+import cromwell.backend.{BackendConfigurationDescriptor, BackendJobDescriptor}
 import cromwell.core.WorkflowOptions
 
 import scala.language.postfixOps
@@ -34,6 +35,19 @@ object CromwellBackend {
   def backend(backendName: String): Backend = _backends map { _(backendName) } getOrElse { throw new IllegalStateException("backend() called prior to initBackends") }
 
   def tryBackend(backendName: String) = Try(backend(backendName))
+
+
+  def executionActorFor(jobDescriptor: BackendJobDescriptor, conf: BackendConfigurationDescriptor) = {
+    import scala.reflect.runtime.universe
+
+    val runtimeMirror = universe.runtimeMirror(getClass.getClassLoader)
+    val module = runtimeMirror.staticModule("cromwell.backend.impl.local.LocalJobExecutionActor")
+    val obj = runtimeMirror.reflectModule(module)
+    val method = obj.symbol.info.decl(universe.TermName("props")).asMethod
+
+    val objMirror = runtimeMirror.reflect(obj.instance)
+    objMirror.reflectMethod(method)(jobDescriptor, conf).asInstanceOf[Props]
+  }
 
   /**
     * Register a new custom backend in the CromwellBackend set. This is mainly useful just for test cases which want

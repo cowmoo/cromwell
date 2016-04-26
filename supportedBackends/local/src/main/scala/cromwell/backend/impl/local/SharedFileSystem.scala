@@ -6,12 +6,10 @@ import java.nio.file.{FileSystem, Files, Path, Paths}
 import com.typesafe.config.Config
 import cromwell.backend.BackendJobDescriptor
 import cromwell.core._
-import wdl4s.WdlExpression.ScopedLookupFunction
-import wdl4s.expression.WdlFunctions
 import wdl4s.types.{WdlArrayType, WdlFileType, WdlMapType}
 import wdl4s.util.TryUtil
 import wdl4s.values.{WdlValue, _}
-import wdl4s.{CallInputs, TaskOutput}
+import wdl4s.{CallInputs, TaskOutput, WdlExpression}
 
 import scala.collection.JavaConverters._
 import scala.language.postfixOps
@@ -89,7 +87,7 @@ trait SharedFileSystem {
     case "copy" => localizePathViaCopy _
   })
 
-  def processOutputs(jobDescriptor: BackendJobDescriptor, workflowId: WorkflowId, lookup: ScopedLookupFunction, engineFunctions: WdlFunctions[WdlValue], jobPaths: JobPaths): Try[CallOutputs] = {
+  def processOutputs(jobDescriptor: BackendJobDescriptor, workflowId: WorkflowId, evaluate: WdlExpression => Try[WdlValue], jobPaths: JobPaths): Try[CallOutputs] = {
     def outputFoldingFunction = {
       (currentList: Seq[AttemptedLookupResult], taskOutput: TaskOutput) => {
         currentList ++ Seq(AttemptedLookupResult(taskOutput.name, outputLookup(taskOutput, currentList)))
@@ -97,7 +95,7 @@ trait SharedFileSystem {
     }
 
     def outputLookup(taskOutput: TaskOutput, currentList: Seq[AttemptedLookupResult]) = for {
-      expressionValue <- taskOutput.requiredExpression.evaluate(lookup, engineFunctions)
+      expressionValue <- evaluate(taskOutput.requiredExpression)
       convertedValue <- outputAutoConversion(jobDescriptor, taskOutput, expressionValue, jobPaths)
       pathAdjustedValue <- Success(absolutizeOutputWdlFile(convertedValue, jobPaths.callRoot))
     } yield pathAdjustedValue

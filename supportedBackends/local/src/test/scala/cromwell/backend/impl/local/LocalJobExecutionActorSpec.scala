@@ -163,9 +163,9 @@ class LocalJobExecutionActorSpec extends FlatSpec with BackendTestkitSpec with M
     0 to 2 foreach { shard =>
       // This assumes that engine will give us the evaluated value of the scatter item at the correct index
       // If this is not the case, more context/logic will need to be moved to the backend so it can figure it out by itself
-      val symbolMaps: Map[LocallyQualifiedName, WdlInteger] = Map("i" -> WdlInteger(shard))
+      val shardMapping: Map[LocallyQualifiedName, WdlInteger] = Map("i" -> WdlInteger(shard))
 
-      val jd: BackendJobDescriptor = new BackendJobDescriptor(wf, new BackendJobDescriptorKey(call, Option(shard), 1), symbolMaps)
+      val jd: BackendJobDescriptor = new BackendJobDescriptor(wf, new BackendJobDescriptorKey(call, Option(shard), 1), shardMapping)
       val backend = localBackend(jd, defaultBackendConfig)
       val response = BackendJobExecutionSucceededResponse(mock[BackendJobDescriptorKey], Map("out" -> CallOutput(WdlInteger(shard), None)))
       executeJobAndAssertOutputs(backend, response)

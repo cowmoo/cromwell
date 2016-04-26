@@ -3,7 +3,10 @@ package cromwell
 import com.typesafe.config.Config
 import cromwell.core.{WorkflowId, WorkflowOptions}
 import wdl4s._
+import wdl4s.expression.WdlFunctions
 import wdl4s.values.WdlValue
+
+import scala.util.Try
 
 package object backend {
 
@@ -27,7 +30,7 @@ package object backend {
     */
   case class BackendJobDescriptor(descriptor: BackendWorkflowDescriptor,
                                   key: BackendJobDescriptorKey,
-                                  symbolMap: Map[FullyQualifiedName, WdlValue]) {
+                                  symbols: Map[LocallyQualifiedName, WdlValue]) {
     val call = key.call
   }
 

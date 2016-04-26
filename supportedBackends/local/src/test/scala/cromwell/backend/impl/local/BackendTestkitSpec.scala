@@ -14,7 +14,10 @@ import org.scalatest.time.{Millis, Seconds, Span}
 import org.scalatest.{Matchers, Tag}
 import spray.json.{JsObject, JsValue}
 import wdl4s._
+import wdl4s.expression.WdlFunctions
 import wdl4s.values.WdlValue
+
+import scala.util.Try
 
 object BackendTestkitSpec {
   implicit val testActorSystem = ActorSystem("LocalBackendSystem")
@@ -31,8 +34,13 @@ trait BackendTestkitSpec extends ScalaFutures with Matchers {
 
   implicit val defaultPatience = PatienceConfig(timeout = Span(5, Seconds), interval = Span(500, Millis))
 
-  def testWorkflow(workflow: TestWorkflow) = {
-    val backend = localBackend(jobDescriptorFromSingleCallWorkflow(workflow.workflowDescriptor), workflow.config)
+  private def splitFqn(fullyQualifiedName: FullyQualifiedName): (String, String) = {
+    val lastIndex = fullyQualifiedName.lastIndexOf(".")
+    (fullyQualifiedName.substring(0, lastIndex), fullyQualifiedName.substring(lastIndex + 1))
+  }
+
+  def testWorkflow(workflow: TestWorkflow, symbols: Map[LocallyQualifiedName, WdlValue] = Map.empty) = {
+    val backend = localBackend(jobDescriptorFromSingleCallWorkflow(workflow.workflowDescriptor, symbols), workflow.config)
     executeJobAndAssertOutputs(backend, workflow.expectedResponse)
   }
 
@@ -52,8 +60,22 @@ trait BackendTestkitSpec extends ScalaFutures with Matchers {
     TestActorRef(new LocalJobExecutionActor(jobDescriptor, conf)).underlyingActor
   }
 
-  def jobDescriptorFromSingleCallWorkflow(workflowDescriptor: BackendWorkflowDescriptor,
-                                          symbolsMap: Map[String, WdlValue] = Map.empty) = {
+  /**
+    * Gather all useful (and only those) inputs for this call from the JSON mappings.
+    */
+  def unqualifyInputs(fqInputs: Map[LocallyQualifiedName, WdlValue]): Map[LocallyQualifiedName, WdlValue] = {
+    // inputs contains evaluated workflow level declarations and coerced json inputs.
+    // This is done during Materialization of WorkflowDescriptor
+    val splitFqns = fqInputs map {
+      case (fqn, v) => splitFqn(fqn) -> v
+    }
+    splitFqns collect {
+      case((root, inputName), v) => inputName -> v // Variables are looked up with LQNs, not FQNs
+    }
+  }
+
+  def jobDescriptorFromSingleCallWorkflow(workflowDescriptor: BackendWorkflowDescriptor, symbols: Map[LocallyQualifiedName, WdlValue] = Map.empty) = {
+    val symbolsMap = symbols ++ unqualifyInputs(workflowDescriptor.inputs)
     val call = workflowDescriptor.workflowNamespace.workflow.calls.head
     val jobKey = new BackendJobDescriptorKey(call, None, 1)
     new BackendJobDescriptor(workflowDescriptor, jobKey, symbolsMap)

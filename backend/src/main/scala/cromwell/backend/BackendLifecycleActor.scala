@@ -1,8 +1,11 @@
 package cromwell.backend
 
-import akka.actor.{ActorRef, Actor}
+import akka.actor.{Actor, ActorRef}
 import cromwell.backend.BackendLifecycleActor._
-import wdl4s.Call
+import wdl4s.WdlExpression.ScopedLookupFunction
+import wdl4s.expression.WdlFunctions
+import wdl4s.values.WdlValue
+import wdl4s.{Call, WdlExpression}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
@@ -45,7 +48,10 @@ trait BackendLifecycleActor extends Actor {
   protected def configurationDescriptor: BackendConfigurationDescriptor
 
   // Boilerplate code to load the configuration from the descriptor
-  lazy val backendConfiguration = configurationDescriptor.config.getConfig(configurationDescriptor.configPath)
+  lazy val backendConfiguration = {
+    if (configurationDescriptor.configPath == "") configurationDescriptor.config
+    else configurationDescriptor.config.getConfig(configurationDescriptor.configPath)
+  }
 
   protected def performActionThenRespond(operation: => Future[BackendWorkflowLifecycleActorResponse],
                                          onFailure: (Throwable) => BackendWorkflowLifecycleActorResponse) = {
@@ -54,6 +60,12 @@ trait BackendLifecycleActor extends Actor {
       case Success(r) => respondTo ! r
       case Failure(t) => respondTo ! onFailure(t)
     }
+  }
+
+  protected def lookup(engineFunctions: WdlFunctions[WdlValue]): ScopedLookupFunction
+
+  final protected def evaluateWith(engineFunctions: WdlFunctions[WdlValue])(wdlExpression: WdlExpression) = {
+    wdlExpression.evaluate(lookup(engineFunctions), engineFunctions)
   }
 }
 
@@ -67,8 +79,17 @@ trait BackendWorkflowLifecycleActor extends BackendLifecycleActor {
     * The subset of calls which this backend will be expected to run
     */
   protected def calls: Seq[Call]
+
+  override def lookup(engineFunctions: WdlFunctions[WdlValue]) = {
+    WdlExpression.standardLookupFunction(workflowDescriptor.inputs, List.empty, engineFunctions)
+  }
 }
 
 trait BackendJobLifecycleActor extends BackendLifecycleActor {
   protected def jobDescriptor: BackendJobDescriptor
+
+  override def lookup(engineFunctions: WdlFunctions[WdlValue]) = {
+    WdlExpression.standardLookupFunction(jobDescriptor.symbols, jobDescriptor.call.task.declarations, engineFunctions)
+  }
+
 }

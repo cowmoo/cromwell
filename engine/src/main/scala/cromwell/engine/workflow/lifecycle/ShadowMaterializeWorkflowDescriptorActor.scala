@@ -167,7 +167,7 @@ class ShadowMaterializeWorkflowDescriptorActor() extends LoggingFSM[ShadowMateri
     override def glob(path: String, pattern: String): Seq[String] =
       throw new Exception("Cannot use glob in workflow-level declarations because no filesystem yet")
 
-    override def toPath(str: String): Path = throw new Exception("Cannot convert strings to Paths because no filesystem yet")
+    override def toPath(str: String): Path = throw new Exception(s"Cannot convert $str to a Path because no filesystem yet")
   }
 
   private def buildWorkflowDescriptor(id: WorkflowId,
@@ -181,7 +181,7 @@ class ShadowMaterializeWorkflowDescriptorActor() extends LoggingFSM[ShadowMateri
       declarations <- validateDeclarations(namespace, workflowOptions, coercedInputs, NoWorkflowEngineFunctions)
       declarationsAndInputs = declarations ++ coercedInputs
       backendDescriptor = BackendWorkflowDescriptor(id, namespace, declarationsAndInputs, workflowOptions)
-    } yield EngineWorkflowDescriptor(backendDescriptor, declarations, backendAssignments, failureMode)
+    } yield EngineWorkflowDescriptor(backendDescriptor, backendAssignments, failureMode)
   }
 
   private def validateBackendAssignments(calls: Seq[Call], workflowOptions: WorkflowOptions): ErrorOr[Map[Call, String]] = {

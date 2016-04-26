@@ -19,7 +19,7 @@ trait WorkflowManagerSystem {
     actorSystem.shutdown()
   }
 
-  CromwellBackend.initBackends(BackendConfiguration.AllBackendEntries, BackendConfiguration.DefaultBackendEntry, actorSystem)
+  //CromwellBackend.initBackends(BackendConfiguration.AllBackendEntries, BackendConfiguration.DefaultBackendEntry, actorSystem)
   // For now there's only one WorkflowManagerActor so no need to dynamically name it
   val workflowManagerProps = if(shadowMode) ShadowWorkflowManagerActor.props() else WorkflowManagerActor.props()
   lazy val workflowManagerActor = actorSystem.actorOf(workflowManagerProps, "WorkflowManagerActor")

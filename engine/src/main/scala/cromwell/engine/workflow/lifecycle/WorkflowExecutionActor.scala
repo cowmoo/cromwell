@@ -1,14 +1,19 @@
 package cromwell.engine.workflow.lifecycle
 
-import akka.actor.{FSM, ActorRef, LoggingFSM, Props}
+import akka.actor._
 import com.typesafe.config.ConfigFactory
 import cromwell.backend.BackendJobExecutionActor.{BackendJobExecutionFailedResponse, BackendJobExecutionSucceededResponse, ExecuteJobCommand}
-import cromwell.backend.{BackendJobDescriptorKey, BackendJobDescriptor, BackendConfigurationDescriptor}
+import cromwell.backend.{BackendConfigurationDescriptor, BackendJobDescriptor, BackendJobDescriptorKey}
 import cromwell.core.WorkflowId
 import cromwell.engine.EngineWorkflowDescriptor
 import cromwell.engine.backend.dummy.DummyBackendJobExecutionActor
+import cromwell.engine.backend.{BackendConfiguration, CromwellBackend}
 import cromwell.engine.workflow.lifecycle.WorkflowExecutionActor._
-import wdl4s.Call
+import wdl4s._
+import wdl4s.expression.WdlFunctions
+import wdl4s.values.WdlValue
+
+import scala.util.Try
 
 object WorkflowExecutionActor {
 
@@ -53,18 +58,34 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
   val tag = self.path.name
   startWith(WorkflowExecutionPendingState, WorkflowExecutionActorData())
 
-  def startJob(call: Call) = {
-    // TODO: Support indexes and retries:
-    val jobKey = BackendJobDescriptorKey(call, None, 1)
-    val jobDescriptor: BackendJobDescriptor = BackendJobDescriptor(workflowDescriptor.backendDescriptor, jobKey, Map.empty)
-    val executionActor = backendForExecution(jobDescriptor, workflowDescriptor.backendAssignments(call))
-    executionActor ! ExecuteJobCommand
+  /** PBE: the return value of WorkflowExecutionActorState is just temporary.
+    *      This should probably return a Try[BackendJobDescriptor], Unit, Boolean,
+    *      Try[ActorRef], or something to indicate if the job was started
+    *      successfully.  Or, if it can fail to start, some indication of why it
+    *      failed to start
+    */
+  private def startJob(call: Call, index: Option[Int], attempt: Int): WorkflowExecutionActorState = {
+    val jobKey = BackendJobDescriptorKey(call, index, attempt)
+    val jobDescriptor = BackendJobDescriptor(workflowDescriptor.backendDescriptor, jobKey, inputsFor(call))
+    val configDescriptor = BackendConfigurationDescriptor("", BackendConfiguration.DefaultBackendEntry.config)
+
+    workflowDescriptor.backendAssignments.get(call) match {
+      case None =>
+        val message = s"Could not start call ${call.fullyQualifiedName} because it was not assigned a backend"
+        log.error(s"$tag $message")
+        context.parent ! WorkflowExecutionFailedResponse(Seq(new Exception(message)))
+        WorkflowExecutionFailedState
+      case Some(backendName) =>
+        val jobExecutionActor = context.actorOf(CromwellBackend.executionActorFor(jobDescriptor, configDescriptor))
+        jobExecutionActor ! ExecuteJobCommand
+        WorkflowExecutionInProgressState
+      }
   }
 
   when(WorkflowExecutionPendingState) {
     case Event(StartExecutingWorkflowCommand, _) =>
       if (workflowDescriptor.namespace.workflow.calls.size == 1) {
-        startJob(workflowDescriptor.namespace.workflow.calls.head)
+        startJob(workflowDescriptor.namespace.workflow.calls.head, None, 1)
         goto(WorkflowExecutionInProgressState)
       } else {
         // TODO: We probably do want to support > 1 call in a workflow!
@@ -122,4 +143,27 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
     } else {
       ??? //TODO: Implement!
     }
+
+  private def splitFqn(fullyQualifiedName: FullyQualifiedName): (String, String) = {
+    val lastIndex = fullyQualifiedName.lastIndexOf(".")
+    (fullyQualifiedName.substring(0, lastIndex), fullyQualifiedName.substring(lastIndex + 1))
+  }
+
+  /**
+    * Gather all useful (and only those) inputs for this call from the JSON mappings.
+    */
+  private def inputsFor(call: Call): Map[LocallyQualifiedName, WdlValue] = {
+    // Useful inputs are workflow level inputs and inputs for this specific call
+    def isUsefulInput(fqn: String) = fqn == call.fullyQualifiedName || fqn == workflowDescriptor.namespace.workflow.unqualifiedName
+
+    // inputs contains evaluated workflow level declarations and coerced json inputs.
+    // This is done during Materialization of WorkflowDescriptor
+    val splitFqns = workflowDescriptor.backendDescriptor.inputs map {
+      case (fqn, v) => splitFqn(fqn) -> v
+    }
+    splitFqns collect {
+      case((root, inputName), v) if isUsefulInput(root) => inputName -> v // Variables are looked up with LQNs, not FQNs
+    }
+  }
+
 }

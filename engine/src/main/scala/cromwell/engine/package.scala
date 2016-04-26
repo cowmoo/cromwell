@@ -36,6 +36,7 @@ package object engine {
 
   type WorkflowOptionsJson = String
   type WorkflowOutputs = Map[FullyQualifiedName, CallOutput]
+  type EvaluatedInputs = Map[FullyQualifiedName, WdlValue]
   type FullyQualifiedName = String
 
   type HostInputs = Map[String, WdlValue]
@@ -89,7 +90,6 @@ package object engine {
   }
 
   final case class EngineWorkflowDescriptor(backendDescriptor: BackendWorkflowDescriptor,
-                                            declarations: WorkflowCoercedInputs,
                                             backendAssignments: Map[Call, String],
                                             failureMode: WorkflowFailureMode) {
     def id = backendDescriptor.id
