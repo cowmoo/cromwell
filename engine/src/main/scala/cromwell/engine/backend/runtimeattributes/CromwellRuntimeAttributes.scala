@@ -1,6 +1,7 @@
 package cromwell.engine.backend.runtimeattributes
 
 import cromwell.backend.impl.jes.io.{JesWorkingDisk, JesAttachedDisk}
+import cromwell.backend.impl.jes.model.MemorySize
 import cromwell.backend.validation.{ContinueOnReturnCodeSet, ContinueOnReturnCode, ContinueOnReturnCodeFlag, RuntimeAttributesValidation}
 import cromwell.core.{ErrorOr, WorkflowOptions}
 import cromwell.engine.backend.runtimeattributes.RuntimeKey._
@@ -34,8 +35,12 @@ object CromwellRuntimeAttributes {
   def apply(wdlRuntimeAttributes: RuntimeAttributes, jobDescriptor: BackendCallJobDescriptor, workflowOptions: Option[WorkflowOptions]): CromwellRuntimeAttributes = {
     val supportedKeys = jobDescriptor.backend.backendType.supportedKeys map { _.key }
 
+    def evaluate(wdlExpression: WdlExpression) = {
+      wdlExpression.evaluate(jobDescriptor.lookupFunction(jobDescriptor.locallyQualifiedInputs), jobDescriptor.callEngineFunctions)
+    }
+
     val attributes = for {
-      attributesFromTask <- TryUtil.sequenceMap(wdlRuntimeAttributes.evaluate(jobDescriptor.lookupFunction(jobDescriptor.locallyQualifiedInputs), jobDescriptor.callEngineFunctions))
+      attributesFromTask <- TryUtil.sequenceMap(wdlRuntimeAttributes.attrs mapValues evaluate)
       attributesWithDefaults <- Try(getAttributesWithDefaults(attributesFromTask, workflowOptions))
       _ <- validateKeys(attributesWithDefaults.keySet, jobDescriptor.backend.backendType)
       supportedAttributes = attributesWithDefaults.filterKeys(k => supportedKeys.contains(k))
@@ -140,10 +145,7 @@ object CromwellRuntimeAttributes {
     val cpu = validateCpu(attributeMap.get(CPU))
     val disks = validateLocalDisks(attributeMap.get(DISKS))
     val preemptible = validatePreemptible(attributeMap.get(PREEMPTIBLE))
-    val memory = RuntimeAttributes.validateMemoryValue(attributeMap.getOrElse(MEMORY, WdlString(s"${defaults.memoryGB} GB"))) match {
-      case scala.util.Success(x) => x.to(MemoryUnit.GB).amount.successNel
-      case scala.util.Failure(x) => x.getMessage.failureNel
-    }
+    val memory = validateMemory(attributeMap.getOrElse(MEMORY, WdlString(s"${defaults.memoryGB} GB")))
     val bootDiskSize = validateBootDisk(attributeMap.get(BOOT_DISK))
 
     (docker |@| zones |@| failOnStderr |@| continueOnReturnCode |@| cpu |@| preemptible |@| disks |@| memory |@| bootDiskSize) {
@@ -151,6 +153,21 @@ object CromwellRuntimeAttributes {
     } match {
       case Success(x) => scala.util.Success(x)
       case Failure(nel) => scala.util.Failure(new IllegalArgumentException(nel.list.mkString("\n")))
+    }
+  }
+
+  private def validateMemory(value: WdlValue): ErrorOr[Double] = {
+    val errMsg = s"Expecting runtime attribute to be an Integer or String with format '8 GB'"
+    def parseMemoryString(s: WdlString) = {
+      MemorySize.parse(s.valueString) match {
+        case scala.util.Success(x: MemorySize) => x.to(MemoryUnit.GB).successNel
+        case scala.util.Failure(t) => errMsg.failureNel
+      }
+    }
+    value match {
+      case i: WdlInteger => MemorySize(i.value.toDouble, MemoryUnit.Bytes).to(MemoryUnit.GB).amount.successNel
+      case s: WdlString => parseMemoryString(s) map { _.to(MemoryUnit.GB).amount }
+      case _ => errMsg.failureNel
     }
   }
 

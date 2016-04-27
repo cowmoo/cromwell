@@ -10,10 +10,7 @@ import cromwell.engine.backend.dummy.DummyBackendJobExecutionActor
 import cromwell.engine.backend.{BackendConfiguration, CromwellBackend}
 import cromwell.engine.workflow.lifecycle.WorkflowExecutionActor._
 import wdl4s._
-import wdl4s.expression.WdlFunctions
 import wdl4s.values.WdlValue
-
-import scala.util.Try
 
 object WorkflowExecutionActor {
 
@@ -66,7 +63,7 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
     */
   private def startJob(call: Call, index: Option[Int], attempt: Int): WorkflowExecutionActorState = {
     val jobKey = BackendJobDescriptorKey(call, index, attempt)
-    val jobDescriptor = BackendJobDescriptor(workflowDescriptor.backendDescriptor, jobKey, inputsFor(call))
+    val jobDescriptor = BackendJobDescriptor(workflowDescriptor.backendDescriptor, jobKey, symbolsFor(call))
     val configDescriptor = BackendConfigurationDescriptor("", BackendConfiguration.DefaultBackendEntry.config)
 
     workflowDescriptor.backendAssignments.get(call) match {
@@ -150,14 +147,14 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
   }
 
   /**
-    * Gather all useful (and only those) inputs for this call from the JSON mappings.
+    * Gather all useful (and only those) symbols for this call from the JSON mappings.
     */
-  private def inputsFor(call: Call): Map[LocallyQualifiedName, WdlValue] = {
+  private def symbolsFor(call: Call): Map[LocallyQualifiedName, WdlValue] = {
     // Useful inputs are workflow level inputs and inputs for this specific call
     def isUsefulInput(fqn: String) = fqn == call.fullyQualifiedName || fqn == workflowDescriptor.namespace.workflow.unqualifiedName
 
     // inputs contains evaluated workflow level declarations and coerced json inputs.
-    // This is done during Materialization of WorkflowDescriptor
+    // This evaluation work is done during the Materialization of WorkflowDescriptor
     val splitFqns = workflowDescriptor.backendDescriptor.inputs map {
       case (fqn, v) => splitFqn(fqn) -> v
     }

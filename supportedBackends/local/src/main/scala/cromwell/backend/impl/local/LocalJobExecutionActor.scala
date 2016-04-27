@@ -100,7 +100,7 @@ class LocalJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
     val evaluatedInputMappings = call.inputMappings mapValues evaluate
 
     TryUtils.sequenceMap(evaluatedInputMappings, "Job Input evaluation") flatMap { inputs =>
-      val localizedInputs = localizeInputs(jobPaths, runsOnDocker, fileSystems, inputs)
+      val localizedInputs = localizeInputs(jobPaths, runsOnDocker, fileSystems, inputs ++ jobDescriptor.symbols)
       call.task.instantiateCommand(localizedInputs, callEngineFunction, pathTransformFunction)
     }
   }
