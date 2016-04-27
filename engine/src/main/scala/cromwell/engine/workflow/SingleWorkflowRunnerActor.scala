@@ -5,6 +5,7 @@ import java.nio.file.Path
 import akka.actor.FSM.{CurrentState, Transition}
 import akka.actor._
 import better.files._
+import com.typesafe.config.ConfigFactory
 import cromwell.core.{CallOutput, WorkflowId}
 import cromwell.engine
 import cromwell.engine._
@@ -57,6 +58,7 @@ case class SingleWorkflowRunnerActor(source: WorkflowSourceFiles,
   import SingleWorkflowRunnerActor._
 
   val tag = "SingleWorkflowRunnerActor"
+  lazy val shadowMode = ConfigFactory.load().getBoolean("system.shadowExecutionEnabled")
 
   startWith(NotStarted, RunnerData())
 
@@ -73,7 +75,8 @@ case class SingleWorkflowRunnerActor(source: WorkflowSourceFiles,
   when (NotStarted) {
     case Event(RunWorkflow, data) =>
       log.info(s"$tag: launching workflow")
-      workflowManager ! SubmitWorkflow(source)
+      val submitMessage = if (shadowMode) ShadowWorkflowManagerActor.SubmitWorkflowCommand(source) else WorkflowManagerActor.SubmitWorkflow(source)
+      workflowManager ! submitMessage
       goto (RunningWorkflow) using data.copy(replyTo = Option(sender()))
   }
 
