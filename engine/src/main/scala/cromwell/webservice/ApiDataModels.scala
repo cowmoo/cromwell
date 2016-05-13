@@ -35,7 +35,7 @@ case class WorkflowMetadataResponse(id: String,
                                     calls: Map[String, Seq[OldStyleCallMetadata]],
                                     failures: Option[Seq[FailureEventEntry]])
 
-case class WorkflowQueryResponse(results: Seq[WorkflowQueryResult])
+case class WorkflowQueryResponse(results: Seq[WorkflowQueryResult], page: Option[Int], pageSize: Option[Int], totalRecords: Int)
 
 final case class CallCachingResponse(updateCount: Int)
 

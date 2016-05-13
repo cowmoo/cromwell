@@ -66,7 +66,7 @@ trait CromwellApiService extends HttpService with PerRequestCreator {
       parameterSeq { parameters =>
         get {
           requestContext =>
-            perRequest(requestContext, CromwellApiHandler.props(workflowManager), CromwellApiHandler.ApiHandlerWorkflowQuery(parameters))
+            perRequest(requestContext, CromwellApiHandler.props(workflowManager), CromwellApiHandler.ApiHandlerWorkflowQuery(requestContext.request.uri, parameters))
         }
       }
     }
@@ -77,7 +77,7 @@ trait CromwellApiService extends HttpService with PerRequestCreator {
         post {
           requestContext =>
             perRequest(requestContext, CromwellApiHandler.props(workflowManager),
-              CromwellApiHandler.ApiHandlerWorkflowQuery(parameterMap.flatMap(_.toSeq)))
+              CromwellApiHandler.ApiHandlerWorkflowQuery(requestContext.request.uri, parameterMap.flatMap(_.toSeq)))
         }
       }
     }

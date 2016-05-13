@@ -130,14 +130,14 @@ class MockWorkflowManagerActor extends Actor {
         case _ => WorkflowManagerWorkflowStdoutStderrFailure(id, new WorkflowNotFoundException(s"Bad workflow ID: $id"))
       }
       sender ! message
-    case WorkflowQuery(rawParameters) =>
+    case WorkflowQuery(uri, rawParameters) =>
       val head = rawParameters.head
       head match {
         case ("BadKey", _) =>
           // The exception text is rendered as the body, so there must be exception text or Spray will 500 (!)
           sender ! WorkflowManagerQueryFailure(new IllegalArgumentException("Unrecognized query keys: BadKey"))
         case ("status", _) =>
-          sender ! WorkflowManagerQuerySuccess(WorkflowQueryResponse(
+          sender ! WorkflowManagerQuerySuccess(uri, WorkflowQueryResponse(
             Seq(
               WorkflowQueryResult(
                 id = UUID.randomUUID().toString,
@@ -145,7 +145,7 @@ class MockWorkflowManagerActor extends Actor {
                 status = "Succeeded",
                 start = new DateTime("2015-11-01T12:12:11"),
                 end = Option(new DateTime("2015-11-01T12:12:12")))
-            )))
+            ), Option(1), Option(50), 1))
       }
     case CallCaching(id, parameters, callFqn) =>
       val parametersByKey = parameters.groupBy(_.key.toLowerCase.capitalize) mapValues { _ map { _.value } } mapValues { _.toSet }
