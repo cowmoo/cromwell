@@ -2,12 +2,14 @@ package cromwell.engine.workflow.lifecycle.execution
 
 import akka.actor.{FSM, LoggingFSM, Props}
 import com.typesafe.config.ConfigFactory
-import cromwell.backend.BackendJobExecutionActor.{BackendJobExecutionFailedResponse, BackendJobExecutionFailedRetryableResponse, BackendJobExecutionSucceededResponse, ExecuteJobCommand}
+import cromwell.backend.BackendJobExecutionActor._
+import cromwell.backend.BackendLifecycleActor.AbortJobCommand
 import cromwell.backend.{BackendJobDescriptor, BackendJobDescriptorKey, JobKey}
 import cromwell.core.{WorkflowId, _}
 import cromwell.engine.ExecutionIndex._
 import cromwell.engine.ExecutionStatus.NotStarted
 import cromwell.engine.backend.{BackendConfiguration, CromwellBackends}
+import cromwell.engine.workflow.lifecycle.EngineLifecycleActorAbortCommand
 import cromwell.engine.workflow.lifecycle.execution.JobPreparationActor.{BackendJobPreparationFailed, BackendJobPreparationSucceeded}
 import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor.WorkflowExecutionActorState
 import cromwell.engine.{EngineWorkflowDescriptor, ExecutionStatus}
@@ -33,6 +35,7 @@ object WorkflowExecutionActor {
   case object WorkflowExecutionSuccessfulState extends WorkflowExecutionActorTerminalState
   case object WorkflowExecutionFailedState extends WorkflowExecutionActorTerminalState
   case object WorkflowExecutionAbortedState extends WorkflowExecutionActorTerminalState
+  case object WorkflowExecutionAbortingState extends WorkflowExecutionActorTerminalState
 
   /**
     * Commands
@@ -40,7 +43,6 @@ object WorkflowExecutionActor {
   sealed trait WorkflowExecutionActorCommand
   case object StartExecutingWorkflowCommand extends WorkflowExecutionActorCommand
   case object RestartExecutingWorkflowCommand extends WorkflowExecutionActorCommand
-  case object AbortExecutingWorkflowCommand extends WorkflowExecutionActorCommand
 
   /**
     * Responses
@@ -111,12 +113,10 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
   val tag = self.path.name
   private lazy val DefaultMaxRetriesFallbackValue = 10
 
-  // TODO: We should probably create a trait which loads all the configuration (once per application), and let classes mix it in
-  // to avoid doing ConfigFactory.load() at multiple places
   val MaxRetries = ConfigFactory.load().getIntOption("system.max-retries") match {
     case Some(value) => value
     case None =>
-      log.warning(s"Failed to load the max-retries value from the configuration. Defaulting back to a value of `$DefaultMaxRetriesFallbackValue`.")
+      log.warning(s"Failed to load the max-retries value from the configuration. Defaulting back to a value of '$DefaultMaxRetriesFallbackValue'.")
       DefaultMaxRetriesFallbackValue
   }
 
@@ -138,7 +138,10 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
     WorkflowExecutionActorData(
       workflowDescriptor,
       executionStore = buildInitialExecutionStore(),
-      outputStore = OutputStore.empty))
+      backendJobExecutionActors = Map.empty,
+      outputStore = OutputStore.empty
+    )
+  )
 
   private def buildInitialExecutionStore(): ExecutionStore = {
     val workflow = workflowDescriptor.backendDescriptor.workflowNamespace.workflow
@@ -162,15 +165,14 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
     case Event(RestartExecutingWorkflowCommand, _) =>
       // TODO: Restart executing
       goto(WorkflowExecutionInProgressState)
-    case Event(AbortExecutingWorkflowCommand, _) =>
-      context.parent ! WorkflowExecutionAbortedResponse
-      goto(WorkflowExecutionAbortedState)
   }
 
   when(WorkflowExecutionInProgressState) {
     case Event(BackendJobPreparationSucceeded(jobDescriptor, actorProps), stateData) =>
-      context.actorOf(actorProps, buildJobExecutionActorName(jobDescriptor)) ! ExecuteJobCommand
-      stay() using stateData.mergeExecutionDiff(WorkflowExecutionDiff(Map(jobDescriptor.key -> ExecutionStatus.Running)))
+      val backendExecutionActor = context.actorOf(actorProps, buildJobExecutionActorName(jobDescriptor))
+      backendExecutionActor ! ExecuteJobCommand
+      stay() using stateData.addBackendJobExecutionActor(jobDescriptor.key, backendExecutionActor)
+                            .mergeExecutionDiff(WorkflowExecutionDiff(Map(jobDescriptor.key -> ExecutionStatus.Running)))
     case Event(BackendJobPreparationFailed(jobKey, t), stateData) =>
       log.error(s"Failed to start job $jobKey", t)
       goto(WorkflowExecutionFailedState) using stateData.mergeExecutionDiff(WorkflowExecutionDiff(Map(jobKey -> ExecutionStatus.Failed)))
@@ -178,7 +180,8 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
       handleCallSuccessful(jobKey, callOutputs, stateData)
     case Event(BackendJobExecutionFailedResponse(jobKey, reason), stateData) =>
       log.warning(s"Job ${jobKey.call.fullyQualifiedName} failed! Reason: ${reason.getMessage}", reason)
-      goto(WorkflowExecutionFailedState) using stateData.mergeExecutionDiff(WorkflowExecutionDiff(Map(jobKey -> ExecutionStatus.Failed)))
+      goto(WorkflowExecutionFailedState) using stateData.removeBackendJobExecutionActor(jobKey)
+                                                        .mergeExecutionDiff(WorkflowExecutionDiff(Map(jobKey -> ExecutionStatus.Failed)))
     case Event(BackendJobExecutionFailedRetryableResponse(jobKey, reason), stateData) =>
       log.warning(s"Job ${jobKey.tag} failed with a retryable failure: ${reason.getMessage}")
       handleRetryableFailure(jobKey)
@@ -187,8 +190,6 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
       goto(WorkflowExecutionFailedState)
     case Event(ScatterCollectionSucceededResponse(jobKey, callOutputs), stateData) =>
       handleCallSuccessful(jobKey, callOutputs, stateData)
-    case Event(AbortExecutingWorkflowCommand, stateData) => ??? // TODO: Implement!
-    case Event(_, _) => ??? // TODO: Lots of extra stuff to include here...
   }
 
   when(WorkflowExecutionSuccessfulState) {
@@ -200,16 +201,29 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
   when(WorkflowExecutionAbortedState) {
     FSM.NullFunction
   }
+  when(WorkflowExecutionAbortingState) {
+    case Event(BackendJobExecutionAbortedResponse(jobKey), stateData) if stateData.backendJobExecutionActors.isEmpty =>
+      log.info(s"$tag all jobs aborted")
+      goto(WorkflowExecutionAbortedState)
+    case Event(BackendJobExecutionAbortedResponse(jobKey), stateData) =>
+      log.info(s"$tag job aborted: ${jobKey.tag}")
+      stay() using stateData.removeBackendJobExecutionActor(jobKey)
+  }
 
   whenUnhandled {
+    case Event(EngineLifecycleActorAbortCommand, stateData) =>
+      println(s" ------ ABORT WorkflowExecutionActor")
+      stateData.backendJobExecutionActors.values foreach { _ ! AbortJobCommand }
+      context.parent ! WorkflowExecutionAbortedResponse
+      goto(WorkflowExecutionAbortingState)
     case unhandledMessage =>
       log.warning(s"$tag received an unhandled message: $unhandledMessage in state: $stateName")
       stay
   }
 
   onTransition {
-    case _ -> toState if toState.terminal =>
-      log.info(s"$tag done. Shutting down.")
+    case fromState -> toState if toState.terminal =>
+      log.info(s"$tag transitioning from $fromState to $toState. Shutting down.")
       context.stop(self)
     case fromState -> toState =>
       log.info(s"$tag transitioning from $fromState to $toState.")
@@ -253,7 +267,7 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
     val runnableCalls = runnableScopes.view collect { case k if k.scope.isInstanceOf[Call] => k } sortBy { _.index.getOrElse(-1) } map { _.tag }
     if (runnableCalls.nonEmpty) log.info(s"Starting calls: " + runnableCalls.mkString(", "))
 
-    // Each process*** returns a Try[WorkflowExecutionDiff], which, upon success, contains potential changes to be made to the execution store.
+    // Each processRunnable* method returns a Try[WorkflowExecutionDiff], which, upon success, contains potential changes to be made to the execution store.
     val executionDiffs = runnableScopes map {
       case k: BackendJobDescriptorKey => processRunnableJob(k, data)
       case k: ScatterKey => processRunnableScatter(k, data)

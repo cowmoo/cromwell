@@ -119,7 +119,7 @@ class LocalJobExecutionActorSpec extends FlatSpec with BackendTestkitSpec with M
     val backend = localBackend(jobDescriptor, defaultBackendConfigDescriptor)
 
     val execute = backend.execute
-    val abort = backend.abortJob
+    val abort = backend.abort
 
     whenReady(execute) { executionResponse =>
       executionResponse shouldBe a[BackendJobExecutionAbortedResponse]

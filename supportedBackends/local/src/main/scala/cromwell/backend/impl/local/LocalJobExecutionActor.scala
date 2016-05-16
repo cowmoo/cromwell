@@ -113,11 +113,12 @@ class LocalJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
     case Failure(ex) => Future.successful(BackendJobExecutionFailedResponse(jobDescriptor.key, ex))
   }
 
-  override def abortJob: Unit = {
+  override def abort: Future[BackendJobExecutionResponse] = {
     process foreach { p =>
       p.destroy()
       process = None
     }
+    Future.successful(BackendJobExecutionAbortedResponse(jobDescriptor.key))
   }
 
   override def recover: Future[BackendJobExecutionResponse] = execute

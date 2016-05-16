@@ -110,18 +110,21 @@ case class Run(runId: String, pipeline: Pipeline /*, logger: WorkflowLogger */) 
     val currentStatus = status()
 
     if (!(previousStatus contains currentStatus)) {
-      // If this is the first time checking the status, we log the transition as '-' to 'currentStatus'. Otherwise
-      // just use the state names.
       val prevStateName = previousStatus map { _.toString } getOrElse "-"
       println(s"Status change from $prevStateName to $currentStatus")
 
       // PBE deleted db writes for run id and status
-      // PBE deleted abort function registration
+
+      if (currentStatus.isRunningOrComplete && (previousStatus.isEmpty || !previousStatus.get.isRunningOrComplete)) {
+        jobDescriptor.abortFunction = Some(() => abort())
+      }
     }
+
     currentStatus
   }
 
   def abort(): Unit = {
+    println(s"!!!!!!!! ABORT CALLED ON $runId")
     val cancellationRequest: CancelOperationRequest = new CancelOperationRequest()
     pipeline.genomicsService.operations().cancel(runId, cancellationRequest).execute
   }

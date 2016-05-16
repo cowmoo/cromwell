@@ -173,7 +173,7 @@ class WorkflowActor(workflowId: WorkflowId,
   }
 
   when(AbortingWorkflowState) {
-    case Event(x: EngineLifecycleStateCompleteResponse, _) =>
+    case Event(x: EngineLifecycleActorAbortedResponse, _) =>
       context.parent ! WorkflowAbortedResponse(workflowId)
       goto(WorkflowAbortedState)
     case _ => stay()

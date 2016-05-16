@@ -1,6 +1,7 @@
 package cromwell.engine.workflow.lifecycle.execution
 
-import cromwell.backend.JobKey
+import akka.actor.ActorRef
+import cromwell.backend.{BackendJobDescriptorKey, JobKey}
 import cromwell.core._
 import cromwell.engine.ExecutionStatus._
 import cromwell.engine.workflow.lifecycle.execution.OutputStore.{OutputCallKey, OutputEntry}
@@ -19,12 +20,14 @@ final case class WorkflowExecutionDiff(executionStore: Map[JobKey, ExecutionStat
 
 case class WorkflowExecutionActorData(workflowDescriptor: EngineWorkflowDescriptor,
                                       executionStore: ExecutionStore,
+                                      backendJobExecutionActors: Map[JobKey, ActorRef],
                                       outputStore: OutputStore) extends WdlLookup {
 
   override val expressionLanguageFunctions = new WdlFunctions(workflowDescriptor.backendDescriptor.workflowOptions)
 
   def jobExecutionSuccess(jobKey: JobKey, outputs: CallOutputs) = this.copy(
     executionStore = executionStore.add(Map(jobKey -> Done)),
+    backendJobExecutionActors = backendJobExecutionActors - jobKey,
     outputStore = outputStore.add(updateSymbolStoreEntry(jobKey, outputs))
   )
 
@@ -45,6 +48,14 @@ case class WorkflowExecutionActorData(workflowDescriptor: EngineWorkflowDescript
 
   def hasFailedJob: Boolean = {
     executionStore.store.values.exists(_ == ExecutionStatus.Failed)
+  }
+
+  def addBackendJobExecutionActor(jobKey: JobKey, actor: ActorRef): WorkflowExecutionActorData = {
+    this.copy(backendJobExecutionActors = backendJobExecutionActors + (jobKey -> actor))
+  }
+
+  def removeBackendJobExecutionActor(jobKey: JobKey): WorkflowExecutionActorData = {
+    this.copy(backendJobExecutionActors = backendJobExecutionActors - jobKey)
   }
 
   def mergeExecutionDiff(diff: WorkflowExecutionDiff): WorkflowExecutionActorData = {

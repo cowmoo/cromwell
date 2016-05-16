@@ -35,6 +35,9 @@ package object backend {
                                   key: BackendJobDescriptorKey,
                                   inputs: Map[LocallyQualifiedName, WdlValue]) {
     val call = key.call
+
+    /** The abort functionality potentially becomes available after the job descriptor is created */
+    var abortFunction: Option[() => Unit] = None
   }
 
   /**

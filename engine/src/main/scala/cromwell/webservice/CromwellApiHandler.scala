@@ -101,6 +101,7 @@ class CromwellApiHandler(requestHandlerActor: ActorRef) extends Actor {
       }
 
     case ApiHandlerWorkflowAbort(id) => requestHandlerActor ! OldStyleWorkflowManagerActor.WorkflowAbort(id)
+    //case ApiHandlerWorkflowAbort(id) => requestHandlerActor ! WorkflowManagerActor.AbortWorkflowCommand(id)
     case WorkflowManagerAbortSuccess(id) =>
       context.parent ! RequestComplete(StatusCodes.OK, WorkflowAbortResponse(id.toString, WorkflowAborted.toString))
     case WorkflowManagerAbortFailure(_, e) =>

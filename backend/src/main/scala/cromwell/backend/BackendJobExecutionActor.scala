@@ -37,7 +37,7 @@ trait BackendJobExecutionActor extends BackendJobLifecycleActor with ActorLoggin
   def receive: Receive = LoggingReceive {
     case ExecuteJobCommand => performActionThenRespond(execute, onFailure = executionFailed)
     case RecoverJobCommand => performActionThenRespond(recover, onFailure = executionFailed)
-    case AbortJobCommand => abortJob
+    case AbortJobCommand => performActionThenRespond(abort, onFailure = executionFailed)
   }
 
   // We need this for receive because we can't do `onFailure = ExecutionFailure` directly - because BackendJobDescriptor =/= BackendJobDescriptorKey
@@ -56,7 +56,7 @@ trait BackendJobExecutionActor extends BackendJobLifecycleActor with ActorLoggin
   /**
     * Abort a running job.
     */
-  def abortJob: Unit
+  def abort: Future[BackendJobExecutionResponse]
 
   def evaluateOutputs(wdlFunctions: WdlStandardLibraryFunctions,
                       postMapper: WdlValue => Try[WdlValue] = v => Success(v)) = {

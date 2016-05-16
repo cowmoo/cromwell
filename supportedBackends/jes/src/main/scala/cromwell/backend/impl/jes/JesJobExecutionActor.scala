@@ -1,7 +1,7 @@
 package cromwell.backend.impl.jes
 
 import akka.actor.{ActorRef, Props}
-import cromwell.backend.BackendJobExecutionActor.BackendJobExecutionResponse
+import cromwell.backend.BackendJobExecutionActor.{BackendJobExecutionAbortedResponse, BackendJobExecutionResponse}
 import cromwell.backend._
 import cromwell.backend.async.AsyncBackendJobExecutionActor.Execute
 import org.slf4j.LoggerFactory
@@ -31,14 +31,8 @@ case class JesJobExecutionActor(override val jobDescriptor: BackendJobDescriptor
 
   // PBE there should be some consideration of supervision here.
 
-  /**
-    * Restart or resume a previously-started job.
-    */
   override def recover: Future[BackendJobExecutionResponse] = ???
 
-  /**
-    * Execute a new job.
-    */
   override def execute: Future[BackendJobExecutionResponse] = {
     val executorRef = context.actorOf(JesAsyncBackendJobExecutionActor.props(jobDescriptor, configurationDescriptor, completionPromise))
     executor = Option(executorRef)
@@ -46,8 +40,9 @@ case class JesJobExecutionActor(override val jobDescriptor: BackendJobDescriptor
     completionPromise.future
   }
 
-  /**
-    * Abort a running job.
-    */
-  override def abortJob: Unit = ???
+  override def abort: Future[BackendJobExecutionResponse] = {
+    println(s" --- JesJobExecutionActor ABORT")
+    jobDescriptor.abortFunction.foreach(_())
+    Future.successful(BackendJobExecutionAbortedResponse(jobDescriptor.key))
+  }
 }

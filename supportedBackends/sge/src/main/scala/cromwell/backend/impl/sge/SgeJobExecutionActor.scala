@@ -25,5 +25,5 @@ class SgeJobExecutionActor extends BackendJobExecutionActor {
   /**
     * Abort a running job.
     */
-  override def abortJob: Unit = ???
+  override def abort: Future[BackendJobExecutionResponse] = ???
 }
