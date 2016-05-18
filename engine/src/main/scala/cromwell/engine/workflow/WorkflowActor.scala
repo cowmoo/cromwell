@@ -29,7 +29,6 @@ object WorkflowActor {
     */
   sealed trait WorkflowActorResponse
   case class WorkflowSucceededResponse(workflowId: WorkflowId) extends WorkflowActorResponse
-  case class WorkflowAbortedResponse(workflowId: WorkflowId) extends WorkflowActorResponse
   case class WorkflowFailedResponse(workflowId: WorkflowId, inState: WorkflowActorState, reasons: Seq[Throwable]) extends Exception with WorkflowActorResponse
 
   /**
@@ -67,7 +66,7 @@ object WorkflowActor {
     * The WorkflowActor is aborting. We're just waiting for everything to finish up then we'll respond back to the
     * manager.
     */
-  case object AbortingWorkflowState extends WorkflowActorState
+  case object WorkflowAbortingState extends WorkflowActorState
 
   /**
     * We're done.
@@ -124,8 +123,6 @@ class WorkflowActor(workflowId: WorkflowId,
       actor ! MaterializeWorkflowDescriptorCommand(workflowId, workflowSources, conf)
       goto(MaterializingWorkflowDescriptorState) using stateData.copy(currentLifecycleStateActor = Option(actor))
     case Event(AbortWorkflowCommand, stateData) =>
-      // No lifecycle sub-actors exist yet, so no indirection via WorkflowAbortingState is necessary:
-      sender ! WorkflowAbortedResponse(workflowId)
       goto(WorkflowAbortedState)
   }
 
@@ -172,9 +169,9 @@ class WorkflowActor(workflowId: WorkflowId,
       goto(WorkflowFailedState)
   }
 
-  when(AbortingWorkflowState) {
+  when(WorkflowAbortingState) {
     case Event(x: EngineLifecycleActorAbortedResponse, _) =>
-      context.parent ! WorkflowAbortedResponse(workflowId)
+      println(s"WorkflowActor received EngineLifecycleActorAbortedResponse")
       goto(WorkflowAbortedState)
     case _ => stay()
   }
@@ -195,7 +192,7 @@ class WorkflowActor(workflowId: WorkflowId,
   whenUnhandled {
     case Event(AbortWorkflowCommand, WorkflowActorData(Some(actor), _)) =>
       actor ! EngineLifecycleActorAbortCommand
-      goto(AbortingWorkflowState)
+      goto(WorkflowAbortingState)
     case unhandledMessage =>
       log.warning(s"$tag received an unhandled message $unhandledMessage in state $stateName")
       stay

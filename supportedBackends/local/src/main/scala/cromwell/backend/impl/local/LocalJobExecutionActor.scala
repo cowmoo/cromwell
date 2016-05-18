@@ -118,6 +118,7 @@ class LocalJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
       p.destroy()
       process = None
     }
+    log.info(s"LocalJobExecutionActor: ABORTED, sending back Future.successful for ${jobDescriptor.key}")
     Future.successful(BackendJobExecutionAbortedResponse(jobDescriptor.key))
   }
 

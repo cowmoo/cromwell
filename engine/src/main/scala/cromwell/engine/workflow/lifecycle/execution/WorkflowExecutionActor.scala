@@ -9,7 +9,7 @@ import cromwell.core.{WorkflowId, _}
 import cromwell.engine.ExecutionIndex._
 import cromwell.engine.ExecutionStatus.NotStarted
 import cromwell.engine.backend.{BackendConfiguration, CromwellBackends}
-import cromwell.engine.workflow.lifecycle.EngineLifecycleActorAbortCommand
+import cromwell.engine.workflow.lifecycle.{EngineLifecycleActorAbortedResponse, EngineLifecycleActorAbortCommand}
 import cromwell.engine.workflow.lifecycle.execution.JobPreparationActor.{BackendJobPreparationFailed, BackendJobPreparationSucceeded}
 import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor.WorkflowExecutionActorState
 import cromwell.engine.{EngineWorkflowDescriptor, ExecutionStatus}
@@ -32,10 +32,10 @@ object WorkflowExecutionActor {
 
   case object WorkflowExecutionPendingState extends WorkflowExecutionActorState
   case object WorkflowExecutionInProgressState extends WorkflowExecutionActorState
+  case object WorkflowExecutionAbortingState extends WorkflowExecutionActorState
   case object WorkflowExecutionSuccessfulState extends WorkflowExecutionActorTerminalState
   case object WorkflowExecutionFailedState extends WorkflowExecutionActorTerminalState
   case object WorkflowExecutionAbortedState extends WorkflowExecutionActorTerminalState
-  case object WorkflowExecutionAbortingState extends WorkflowExecutionActorTerminalState
 
   /**
     * Commands
@@ -49,7 +49,7 @@ object WorkflowExecutionActor {
     */
   sealed trait WorkflowExecutionActorResponse
   case object WorkflowExecutionSucceededResponse extends WorkflowExecutionActorResponse
-  case object WorkflowExecutionAbortedResponse extends WorkflowExecutionActorResponse
+  case object WorkflowExecutionAbortedResponse extends WorkflowExecutionActorResponse with EngineLifecycleActorAbortedResponse
   final case class WorkflowExecutionFailedResponse(reasons: Seq[Throwable]) extends WorkflowExecutionActorResponse
 
   /**
@@ -105,7 +105,8 @@ object WorkflowExecutionActor {
   def props(workflowId: WorkflowId, workflowDescriptor: EngineWorkflowDescriptor): Props = Props(WorkflowExecutionActor(workflowId, workflowDescriptor))
 }
 
-final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescriptor: EngineWorkflowDescriptor) extends LoggingFSM[WorkflowExecutionActorState, WorkflowExecutionActorData] {
+final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescriptor: EngineWorkflowDescriptor)
+  extends LoggingFSM[WorkflowExecutionActorState, WorkflowExecutionActorData] {
 
   import WorkflowExecutionActor._
   import lenthall.config.ScalaConfig._
@@ -204,6 +205,7 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
   when(WorkflowExecutionAbortingState) {
     case Event(BackendJobExecutionAbortedResponse(jobKey), stateData) if stateData.backendJobExecutionActors.isEmpty =>
       log.info(s"$tag all jobs aborted")
+      context.parent ! WorkflowExecutionAbortedResponse
       goto(WorkflowExecutionAbortedState)
     case Event(BackendJobExecutionAbortedResponse(jobKey), stateData) =>
       log.info(s"$tag job aborted: ${jobKey.tag}")
@@ -214,7 +216,6 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId, workflowDescript
     case Event(EngineLifecycleActorAbortCommand, stateData) =>
       println(s" ------ ABORT WorkflowExecutionActor")
       stateData.backendJobExecutionActors.values foreach { _ ! AbortJobCommand }
-      context.parent ! WorkflowExecutionAbortedResponse
       goto(WorkflowExecutionAbortingState)
     case unhandledMessage =>
       log.warning(s"$tag received an unhandled message: $unhandledMessage in state: $stateName")

@@ -152,14 +152,22 @@ class WorkflowManagerActor(config: Config)
   }
 
   when (Aborting) {
-    case Event(Transition(workflowActor, _, toState: WorkflowState), data) if toState.isTerminal =>
+    case Event(Transition(workflowActor, _, toState: WorkflowActorState), data) if toState.terminal =>
       // Remove this terminal actor from the workflowStore and log a progress message.
       val updatedData = data.without(workflowActor)
-      logger.info(s"$tag: Waiting for all workflows to abort (${updatedData.workflows.size} remaining).")
       // If there are no more workflows to abort we're done, otherwise just stay in the current state.
-      val resultAction = if (updatedData.workflows.isEmpty) goto(Done) else stay()
+      val resultAction = if (updatedData.workflows.isEmpty) {
+        logger.info(s"$tag All workflows are aborted")
+        goto(Done)
+      } else {
+        logger.info(s"$tag Waiting for all workflows to abort (${updatedData.workflows.size} remaining).")
+        stay()
+      }
       // Whatever the result action, use the updated data:
       resultAction using updatedData
+    case Event(x, y) =>
+      println(s"WorkflowManagerActor: $x \n $y")
+      stay()
   }
 
   when (Done) { FSM.NullFunction }
@@ -169,13 +177,13 @@ class WorkflowManagerActor(config: Config)
     case Event((Transition(_, _, _) | CurrentState(_, _)), _) => stay()
     // Anything else certainly IS interesting:
     case Event(unhandled, data) =>
-      log.warning(s"$tag: Unhandled message: $unhandled")
+      log.warning(s"$tag Unhandled message: $unhandled")
       stay()
   }
 
   onTransition {
     case _ -> Done =>
-      logger.info(s"$tag: All workflows finished. Shutting down.")
+      logger.info(s"$tag All workflows finished. Shutting down.")
       donePromise.trySuccess(())
     case fromState -> toState =>
       logger.info(s"$tag transitioning from $fromState to $toState")
