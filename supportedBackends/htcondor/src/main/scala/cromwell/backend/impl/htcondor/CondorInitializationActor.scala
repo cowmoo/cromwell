@@ -1,23 +1,23 @@
 package cromwell.backend.impl.htcondor
 
 import akka.actor.Props
-import cromwell.backend.impl.htcondor.HtCondorInitializationActor._
+import cromwell.backend.impl.htcondor.CondorInitializationActor._
 import cromwell.backend.validation.RuntimeAttributesKeys._
 import cromwell.backend.{BackendConfigurationDescriptor, BackendWorkflowDescriptor, BackendWorkflowInitializationActor}
 import wdl4s.Call
 
 import scala.concurrent.Future
 
-object HtCondorInitializationActor {
+object CondorInitializationActor {
   val SupportedKeys = Set(Docker, FailOnStderr, ContinueOnReturnCode)
 
   def props(workflowDescriptor: BackendWorkflowDescriptor, calls: Seq[Call], configurationDescriptor: BackendConfigurationDescriptor): Props =
-    Props(new HtCondorInitializationActor(workflowDescriptor, calls, configurationDescriptor))
+    Props(new CondorInitializationActor(workflowDescriptor, calls, configurationDescriptor))
 }
 
-class HtCondorInitializationActor(override val workflowDescriptor: BackendWorkflowDescriptor,
-                                  override val calls: Seq[Call],
-                                  override val configurationDescriptor: BackendConfigurationDescriptor) extends BackendWorkflowInitializationActor {
+class CondorInitializationActor(override val workflowDescriptor: BackendWorkflowDescriptor,
+                                override val calls: Seq[Call],
+                                override val configurationDescriptor: BackendConfigurationDescriptor) extends BackendWorkflowInitializationActor {
   /**
     * Abort all initializations.
     */

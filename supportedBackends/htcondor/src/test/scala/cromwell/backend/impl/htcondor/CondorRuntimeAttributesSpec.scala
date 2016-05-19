@@ -5,14 +5,14 @@ import cromwell.backend.validation.RuntimeAttributesKeys._
 import cromwell.backend.validation.{ContinueOnReturnCode, ContinueOnReturnCodeSet}
 import cromwell.core.{WorkflowId, WorkflowOptions}
 import org.scalatest.{Matchers, WordSpecLike}
-import spray.json.{JsValue, JsObject}
+import spray.json.{JsObject, JsValue}
 import wdl4s.WdlExpression.ScopedLookupFunction
 import wdl4s.expression.NoFunctions
 import wdl4s.util.TryUtil
 import wdl4s.values.WdlValue
-import wdl4s.{Call, WdlExpression, WdlSource, NamespaceWithWorkflow}
+import wdl4s.{Call, NamespaceWithWorkflow, WdlExpression, WdlSource}
 
-class HtCondorRuntimeAttributesSpec extends WordSpecLike with Matchers {
+class CondorRuntimeAttributesSpec extends WordSpecLike with Matchers {
 
   val HelloWorld =
     """
@@ -115,7 +115,7 @@ class HtCondorRuntimeAttributesSpec extends WordSpecLike with Matchers {
 
   private def assertHtCondorRuntimeAttributesSuccessfulCreation(runtimeAttributes: Map[String, WdlValue], expectedRuntimeAttributes: Map[String, Any]): Unit = {
     try {
-      val htCondorRuntimeAttributes = HtCondorRuntimeAttributes(runtimeAttributes)
+      val htCondorRuntimeAttributes = CondorRuntimeAttributes(runtimeAttributes)
       assert(htCondorRuntimeAttributes.dockerImage == expectedRuntimeAttributes.get(Docker).get.asInstanceOf[Option[String]])
       assert(htCondorRuntimeAttributes.failOnStderr == expectedRuntimeAttributes.get(FailOnStderr).get.asInstanceOf[Boolean])
       assert(htCondorRuntimeAttributes.continueOnReturnCode == expectedRuntimeAttributes.get(ContinueOnReturnCode).get.asInstanceOf[ContinueOnReturnCode])
@@ -126,7 +126,7 @@ class HtCondorRuntimeAttributesSpec extends WordSpecLike with Matchers {
 
   private def assertHtCondorRuntimeAttributesFailedCreation(runtimeAttributes: Map[String, WdlValue], exMsg: String): Unit = {
     try {
-      HtCondorRuntimeAttributes(runtimeAttributes)
+      CondorRuntimeAttributes(runtimeAttributes)
       fail("A RuntimeException was expected.")
     } catch {
       case ex: RuntimeException => assert(ex.getMessage.contains(exMsg))

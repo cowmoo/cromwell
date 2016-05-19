@@ -9,17 +9,17 @@ import wdl4s.values.WdlValue
 import scalaz._
 import Scalaz._
 
-object HtCondorRuntimeAttributes {
+object CondorRuntimeAttributes {
   val FailOnStderrDefaultValue = false
   val ContinueOnRcDefaultValue = 0
 
-  def apply(attrs: Map[String, WdlValue]): HtCondorRuntimeAttributes = {
+  def apply(attrs: Map[String, WdlValue]): CondorRuntimeAttributes = {
     val docker = validateDocker(attrs.get(Docker), None.successNel)
     val failOnStderr = validateFailOnStderr(attrs.get(FailOnStderr), FailOnStderrDefaultValue.successNel)
     val continueOnReturnCode = validateContinueOnReturnCode(attrs.get(ContinueOnReturnCode),
       ContinueOnReturnCodeSet(Set(ContinueOnRcDefaultValue)).successNel)
     (continueOnReturnCode |@| docker |@| failOnStderr) {
-      new HtCondorRuntimeAttributes(_, _, _)
+      new CondorRuntimeAttributes(_, _, _)
     } match {
       case Success(x) => x
       case Failure(nel) => throw new RuntimeException with MessageAggregation {
@@ -30,4 +30,4 @@ object HtCondorRuntimeAttributes {
   }
 }
 
-case class HtCondorRuntimeAttributes(continueOnReturnCode: ContinueOnReturnCode, dockerImage: Option[String], failOnStderr: Boolean)
+case class CondorRuntimeAttributes(continueOnReturnCode: ContinueOnReturnCode, dockerImage: Option[String], failOnStderr: Boolean)
