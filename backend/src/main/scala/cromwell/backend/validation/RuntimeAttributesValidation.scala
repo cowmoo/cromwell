@@ -14,6 +14,8 @@ object RuntimeAttributesValidation {
   val MemoryWrongAmountMsg = "Expecting %s runtime attribute value greater than 0 but got %s"
   val MemoryWrongFormatMsg = s"Expecting $Memory runtime attribute to be an Integer or String with format '8 GB'. Exception: %s"
 
+  type Validator[T] = (Option[WdlValue], => ErrorOr[T]) => ErrorOr[T]
+
   def validateDocker(docker: Option[WdlValue], onMissingKey: => ErrorOr[Option[String]]): ErrorOr[Option[String]] = {
     docker match {
       case Some(WdlString(s)) => Some(s).successNel
