@@ -15,6 +15,7 @@ import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor.{Rest
 import cromwell.services.MetadataServiceActor._
 import cromwell.services.{MetadataEvent, MetadataKey, MetadataValue}
 import org.joda.time.DateTime
+import cromwell.database._
 
 import scala.language.postfixOps
 

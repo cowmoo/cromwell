@@ -6,7 +6,8 @@ import java.sql.Timestamp
 import cromwell.database.obj.Metadatum
 
 trait MetadataComponent {
-  this: DriverComponent with WorkflowExecutionComponent =>
+
+  this: DriverComponent =>
 
   import driver.api._
 

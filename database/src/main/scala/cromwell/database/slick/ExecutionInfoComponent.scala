@@ -1,6 +1,7 @@
 package cromwell.database.slick
 
 import cromwell.database.obj.ExecutionInfo
+import slick.lifted.CompiledFunction
 
 trait ExecutionInfoComponent {
   this: DriverComponent with ExecutionComponent with WorkflowExecutionComponent =>

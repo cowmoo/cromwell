@@ -5,6 +5,7 @@ import com.typesafe.config.ConfigFactory
 import cromwell.backend.BackendJobExecutionActor._
 import cromwell.backend.{BackendJobDescriptor, BackendJobDescriptorKey, JobKey}
 import cromwell.core.{WorkflowId, _}
+import cromwell.database.WorkflowMetadataKeys
 import cromwell.engine.ExecutionIndex._
 import cromwell.engine.ExecutionStatus.NotStarted
 import cromwell.engine.backend.{BackendConfiguration, CromwellBackends}
@@ -337,7 +338,6 @@ final case class WorkflowExecutionActor(workflowId: WorkflowId,
   }
 
   private def pushOutputsToMetadataService(data: WorkflowExecutionActorData): Unit = {
-    import workflow._
     val keyValues = data.outputStore.store.flatMap {
       case (key, value) => value map (entry => s"${key.call.fullyQualifiedName}.${entry.name}" -> entry.wdlValue.map(_.toWdlString).getOrElse("NA"))
     }

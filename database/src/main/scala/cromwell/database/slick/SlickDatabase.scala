@@ -5,12 +5,13 @@ import java.util.UUID
 import java.util.concurrent.{ExecutorService, Executors}
 
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
-import cromwell.database.SqlDatabase
 import cromwell.database.obj._
+import cromwell.database.{SqlDatabase, WorkflowMetadataKeys}
 import lenthall.config.ScalaConfig._
 import org.slf4j.LoggerFactory
 import slick.backend.DatabaseConfig
 import slick.driver.JdbcProfile
+import slick.lifted.MappedProjection
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -674,9 +675,26 @@ class SlickDatabase(databaseConfig: Config) extends SqlDatabase {
                                 value: String,
                                 timestamp: Timestamp)(implicit ec: ExecutionContext): Future[Unit] = {
 
-    val action = dataAccess.metadataAutoInc += Metadatum(workflowUuid, key,
+    val appendToMetadataJournal = dataAccess.metadataAutoInc += Metadatum(workflowUuid, key,
       callFqn = None, index = None, attempt = None, Option(value), timestamp)
-    runTransaction(action).map(_ => ())
+
+    val query = dataAccess.workflowMetadataSummariesByUuid(workflowUuid).extract
+    val updateSummary = key match {
+        case WorkflowMetadataKeys.Name => query.map(_.name).update(Option(value))
+        case WorkflowMetadataKeys.Status => query.map(_.status).update(Option(value))
+        case WorkflowMetadataKeys.StartTime => query.map(_.startDate).update(Option(Timestamp.valueOf(value)))
+        case WorkflowMetadataKeys.EndTime => query.map(_.endDate).update(Option(Timestamp.valueOf(value)))
+        case _ => DBIO.successful(())
+      }
+
+    val action = for {
+      _ <- appendToMetadataJournal
+      summaries <- dataAccess.workflowMetadataSummariesByUuid(workflowUuid).result
+      _ <- if (summaries.isEmpty) dataAccess.workflowMetadataSummaryAutoInc += WorkflowMetadataSummary(workflowUuid) else DBIO.successful(())
+      _ <- updateSummary
+    } yield ()
+
+    runTransaction(action)
   }
 
   override def addMetadataEvent(workflowUuid: String,

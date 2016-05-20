@@ -5,6 +5,7 @@ import akka.actor._
 import akka.event.Logging
 import com.typesafe.config.{Config, ConfigFactory}
 import cromwell.core.{KnowsWhatTimeItIs, WorkflowId}
+import cromwell.database.WorkflowMetadataKeys
 import cromwell.engine._
 import cromwell.engine.backend._
 import cromwell.engine.db.DataAccess._

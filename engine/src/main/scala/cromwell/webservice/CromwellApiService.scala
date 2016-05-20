@@ -3,8 +3,8 @@ package cromwell.webservice
 import akka.actor._
 import com.typesafe.config.Config
 import cromwell.core.WorkflowId
+import cromwell.database.WorkflowMetadataKeys
 import cromwell.engine.WorkflowSourceFiles
-import cromwell.engine.workflow.WorkflowMetadataKeys
 import cromwell.services.MetadataServiceActor.{GetAllMetadataAction, GetMetadataQueryAction}
 import cromwell.services.{MetadataQuery, ServiceRegistryClient}
 import cromwell.webservice.WorkflowJsonSupport._
