@@ -67,7 +67,7 @@ class JobPaths(workflowDescriptor: BackendWorkflowDescriptor,
 
   val stdout = callRoot.resolve("stdout")
   val stderr = callRoot.resolve("stderr")
-  val script = callRoot.resolve("script")
+  val script = callRoot.resolve("script.sh")
   val returnCode = callRoot.resolve("rc")
   val submitFile = callRoot.resolve("submitfile")
   val submitFileStderr = callRoot.resolve("submitfile.stderr")

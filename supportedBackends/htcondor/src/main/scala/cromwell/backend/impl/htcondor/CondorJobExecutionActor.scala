@@ -1,5 +1,6 @@
 package cromwell.backend.impl.htcondor
 
+import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.{Files, Path, FileSystems}
 import java.util.regex.Pattern
 
@@ -90,12 +91,12 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
       val command = call.task.instantiateCommand(localizedInputs, callEngineFunction, identity).get
       log.debug(s"Creating bash script for executing command: $command.")
       writeScript(command, scriptPath, executionDir) // Writes the bash script for executing the command
+      scriptPath.addPermission(PosixFilePermission.OWNER_EXECUTE)
       //TODO: need to access other requirements for submit file from runtime requirements
       val attributes = Map(HtCondorRuntimeKeys.executable -> scriptPath.toString,
         HtCondorRuntimeKeys.output -> stdoutPath.toString,
         HtCondorRuntimeKeys.error -> stderrPath.toString)
-      val condorSubmitFile = cmds.submitCommand(submitPath, attributes)
-//      writeScript(condorSubmitFile, submitPath, executionDir)
+      cmds.submitCommand(submitPath, attributes) // This writes the condor submit file
     } catch {
       case ex: Exception =>
         log.error(ex, s"Failed to prepare task: ${ex.getMessage}")
@@ -137,7 +138,7 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
       val pattern = Pattern.compile(HtCondorCommands.submit_output_pattern)
       //Number of lines in stdout for submit job will be 3 at max therefore reading all lines at once.
       log.debug(s"output of submit process : ${stdoutPath.lines.toList}")
-      val line = stdoutPath.lines.toList.last
+      val line = jobPaths.submitFileStdout.lines.toList.last
       val matcher = pattern.matcher(line)
       log.debug(s"submit process stdout last line : $line")
       if (!matcher.matches())
