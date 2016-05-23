@@ -11,7 +11,6 @@ import lenthall.config.ScalaConfig._
 import org.slf4j.LoggerFactory
 import slick.backend.DatabaseConfig
 import slick.driver.JdbcProfile
-import slick.lifted.MappedProjection
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -673,15 +672,23 @@ class SlickDatabase(databaseConfig: Config) extends SqlDatabase {
   override def addMetadataEvent(workflowUuid: String,
                                 key: String,
                                 value: String,
-                                timestamp: Timestamp)(implicit ec: ExecutionContext): Future[Unit] = {
+                                timestamp: Timestamp,
+                                statusResolutionFn: (String, String) => String)(implicit ec: ExecutionContext): Future[Unit] = {
 
     val appendToMetadataJournal = dataAccess.metadataAutoInc += Metadatum(workflowUuid, key,
       callFqn = None, index = None, attempt = None, Option(value), timestamp)
 
+    def updateStatus(existingStatus: Option[String], incomingStatus: String): Option[String] = {
+      val statusResolver = statusResolutionFn.curried(incomingStatus)
+      existingStatus map statusResolver orElse Option(incomingStatus)
+    }
+
     val query = dataAccess.workflowMetadataSummariesByUuid(workflowUuid).extract
-    val updateSummary = key match {
+    def updateSummary(existingSummary: Option[WorkflowMetadataSummary]) = key match {
         case WorkflowMetadataKeys.Name => query.map(_.name).update(Option(value))
-        case WorkflowMetadataKeys.Status => query.map(_.status).update(Option(value))
+        case WorkflowMetadataKeys.Status =>
+          val newValue = updateStatus(existingSummary flatMap { _.status}, value)
+          query.map(_.status).update(newValue)
         case WorkflowMetadataKeys.StartTime => query.map(_.startDate).update(Option(Timestamp.valueOf(value)))
         case WorkflowMetadataKeys.EndTime => query.map(_.endDate).update(Option(Timestamp.valueOf(value)))
         case _ => DBIO.successful(())
@@ -691,7 +698,7 @@ class SlickDatabase(databaseConfig: Config) extends SqlDatabase {
       _ <- appendToMetadataJournal
       summaries <- dataAccess.workflowMetadataSummariesByUuid(workflowUuid).result
       _ <- if (summaries.isEmpty) dataAccess.workflowMetadataSummaryAutoInc += WorkflowMetadataSummary(workflowUuid) else DBIO.successful(())
-      _ <- updateSummary
+      _ <- updateSummary(summaries.headOption)
     } yield ()
 
     runTransaction(action)

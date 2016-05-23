@@ -20,6 +20,7 @@ import cromwell.engine.db.EngineConverters._
 import cromwell.engine.finalcall.OldStyleFinalCall
 import cromwell.engine.workflow.OldStyleWorkflowManagerActor.WorkflowNotFoundException
 import cromwell.engine.workflow.{BackendCallKey, ExecutionStoreKey, _}
+import cromwell.services.MetadataServiceActor.StatusResolutionFn
 import cromwell.services._
 import cromwell.webservice.{CallCachingParameters, WorkflowQueryParameters, WorkflowQueryResponse}
 import org.apache.commons.lang3.StringUtils
@@ -366,12 +367,12 @@ trait DataAccess extends AutoCloseable {
     addWorkflowFailureEvent(workflowId.toString, failureEvents)
   }
 
-  def addMetadataEvent(metadataEvent: MetadataEvent)(implicit ec: ExecutionContext): Future[Unit] = {
+  def addMetadataEvent(metadataEvent: MetadataEvent, statusResolutionFn: StatusResolutionFn)(implicit ec: ExecutionContext): Future[Unit] = {
     val key = metadataEvent.key
     val workflowUuid = key.workflowId.id.toString
     val timestamp = metadataEvent.timestamp
     key.jobKey match {
-      case None => addMetadataEvent(workflowUuid, key.key, metadataEvent.value.value, timestamp)
+      case None => addMetadataEvent(workflowUuid, key.key, metadataEvent.value.value, timestamp, statusResolutionFn)
       case Some(jobKey) => addMetadataEvent(workflowUuid, key.key, jobKey.callFqn, jobKey.index, jobKey.attempt, metadataEvent.value.value, timestamp)
     }
   }

@@ -175,7 +175,8 @@ trait SqlDatabase extends AutoCloseable {
   protected def addMetadataEvent(workflowUuid: String,
                                  key: String,
                                  value: String,
-                                 timestamp: Timestamp)
+                                 timestamp: Timestamp,
+                                 statusResolutionFn: (String, String) => String)
                                 (implicit ec: ExecutionContext): Future[Unit]
 
   protected def addMetadataEvent(workflowUuid: String,
