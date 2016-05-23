@@ -15,7 +15,7 @@ import cromwell.engine.workflow.{WorkflowManagerActor, WorkflowMetadataKeys}
 import cromwell.engine.{WorkflowOutputs, _}
 import cromwell.server.WorkflowManagerSystem
 import cromwell.services.MetadataServiceActor._
-import cromwell.services.ServiceRegistryClient
+import cromwell.services.{MetadataQuery, ServiceRegistryClient}
 import cromwell.util.SampleWdl
 import cromwell.webservice.CromwellApiHandler._
 import cromwell.webservice.MetadataBuilderActor
@@ -26,7 +26,7 @@ import org.scalatest.{BeforeAndAfterAll, Matchers, OneInstancePerTest, WordSpecL
 import spray.json._
 import wdl4s.Call
 import wdl4s.expression.{NoFunctions, WdlStandardLibraryFunctions}
-import wdl4s.values.{WdlString, WdlValue}
+import wdl4s.values.{WdlArray, WdlFile, WdlString, WdlValue}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext}
@@ -308,8 +308,17 @@ abstract class CromwellTestkitSpec extends TestKit(new CromwellTestkitSpec.TestW
   }
 
   // output received from the metadata service is untyped, so WdlValues are converted to strings
-  // TODO: for currently enabled tests, this is sufficient.  However as more tests in the PBE world are reenabled this may need to expand
-  private def validateOutput(output: String, expectedOutput: WdlValue): Unit = {
+  private def validateOutput(output: String, expectedOutput: WdlValue): Unit = expectedOutput match {
+    case expectedFile: WdlFile =>
+      output.endsWith(expectedFile.valueString) shouldEqual true
+      // TODO: when we re-enable a test in the PBE world that deals with arrays, this will need to be re-instated and refactored
+//    case expectedArray: WdlArray =>
+//      val actualArray = output.asInstanceOf[WdlArray]
+//      actualArray.value.size should be(expectedArray.value.size)
+//      (actualArray.value zip expectedArray.value) foreach {
+//        case (actual, expected) => validateOutput(actual, expected)
+//      }
+    case _ =>
       output shouldEqual expectedOutput.valueString
   }
 
@@ -462,8 +471,10 @@ abstract class CromwellTestkitSpec extends TestKit(new CromwellTestkitSpec.TestW
       }
     })
 
-    val message = GetMetadataQueryAction(MetadataQuery(Option(workflowId), None, key))
-    Await.result(supervisor.ask(message).mapTo[RequestComplete[(String,JsObject)]], Duration.Inf).response._2
+    val message = GetMetadataQueryAction(MetadataQuery(workflowId, None, key))
+    val result =Await.result(supervisor.ask(message).mapTo[RequestComplete[(String,JsObject)]], Duration.Inf).response._2
+    Console.err.println("-----------------------------------------\n" + result.compactPrint + "---------------------------------------------------")
+    result
   }
 
   def verifyWorkflowState(wma: ActorRef, workflowId: WorkflowId, expectedState: WorkflowState)(implicit ec: ExecutionContext): Unit = {
@@ -478,6 +489,6 @@ abstract class CromwellTestkitSpec extends TestKit(new CromwellTestkitSpec.TestW
   }
 
   def getWorkflowOutputs(id: WorkflowId): Map[FullyQualifiedName, String] = {
-    getWorkflowMetadata(id).getFields(WorkflowMetadataKeys.Outputs).head.asInstanceOf[JsObject].fields.map( x => (x._1,x._2.asInstanceOf[JsString].value))
+    getWorkflowMetadata(id).fields.head._2.asInstanceOf[JsObject].getFields(WorkflowMetadataKeys.Outputs).head.asInstanceOf[JsObject].fields.map( x => (x._1,x._2.asInstanceOf[JsString].value))
   }
 }
