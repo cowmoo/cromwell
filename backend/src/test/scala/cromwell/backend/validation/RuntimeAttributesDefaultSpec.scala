@@ -107,5 +107,4 @@ class RuntimeAttributesDefaultSpec extends FlatSpec with Matchers {
     import scalaz.Scalaz._
     noValueFoundFor("myKey") shouldBe "Can't find an attribute value for key myKey".failureNel
   }
-
 }

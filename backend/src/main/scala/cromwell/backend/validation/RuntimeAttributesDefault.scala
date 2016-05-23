@@ -35,5 +35,4 @@ object RuntimeAttributesDefault {
   }
 
   def noValueFoundFor[A](attribute: String): ValidationNel[String, A] = s"Can't find an attribute value for key $attribute".failureNel
-
 }
