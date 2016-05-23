@@ -1,18 +1,16 @@
 package cromwell.backend.impl.htcondor
 
 import java.nio.file.attribute.PosixFilePermission
-import java.nio.file.{Files, Path, FileSystems}
-import java.util.regex.Pattern
+import java.nio.file.{FileSystems, Path}
 
 import akka.actor.Props
-import cromwell.backend.BackendJobExecutionActor.{SucceededResponse, FailedNonRetryableResponse, BackendJobExecutionResponse}
+import cromwell.backend.BackendJobExecutionActor.{BackendJobExecutionResponse, FailedNonRetryableResponse, SucceededResponse}
 import cromwell.backend._
 import wdl4s.util.TryUtil
 
-import scala.annotation.tailrec
 import scala.concurrent.Future
 import scala.sys.process.ProcessLogger
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success}
 
 object CondorJobExecutionActor {
 
@@ -28,31 +26,25 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
 
 
   import CondorJobExecutionActor._
-  import cromwell.core.PathFactory._
   import better.files._
+  import cromwell.core.PathFactory._
 
-  lazy val cmds = new HtCondorCommands {}
-  lazy val extProcess = new HtCondorProcess {}
-  lazy val parser = new HtCondorClassAdParser {}
-
-  val fileSystemsConfig = configurationDescriptor.backendConfig.getConfig("filesystems")
-  override val sharedFsConfig = fileSystemsConfig.getConfig("local")
-
-  val workflowDescriptor = jobDescriptor.descriptor
-  val jobPaths = new JobPaths(workflowDescriptor, configurationDescriptor.backendConfig, jobDescriptor.key)
-
-  // Files
-  val executionDir = jobPaths.callRoot
-  val returnCodePath = jobPaths.returnCode
-  val stdoutPath = jobPaths.stdout
-  val stderrPath = jobPaths.stderr
-  val scriptPath = jobPaths.script
-  val submitPath = jobPaths.submitFile
-
+  lazy val cmds = new HtCondorCommands
+  lazy val extProcess = new HtCondorProcess
   // stdout stderr writers for submit file logs
-  lazy val stdoutWriter = extProcess.getUntailedWriter(jobPaths.submitFileStdout)
-  lazy val stderrWriter = extProcess.getTailedWriter(100, jobPaths.submitFileStderr)
-  val argv = extProcess.getCommandList(scriptPath.toString)
+  private lazy val stdoutWriter = extProcess.untailedWriter(jobPaths.submitFileStdout)
+  private lazy val stderrWriter = extProcess.tailedWriter(100, jobPaths.submitFileStderr)
+  private val fileSystemsConfig = configurationDescriptor.backendConfig.getConfig("filesystems")
+  override val sharedFsConfig = fileSystemsConfig.getConfig("local")
+  private val workflowDescriptor = jobDescriptor.descriptor
+  private val jobPaths = new JobPaths(workflowDescriptor, configurationDescriptor.backendConfig, jobDescriptor.key)
+  // Files
+  private val executionDir = jobPaths.callRoot
+  private val returnCodePath = jobPaths.returnCode
+  private val stdoutPath = jobPaths.stdout
+  private val stderrPath = jobPaths.stderr
+  private val scriptPath = jobPaths.script
+  private val submitPath = jobPaths.submitFile
 
   val call = jobDescriptor.key.call
   val callEngineFunction = CondorJobExpressionFunctions(jobPaths)
@@ -62,7 +54,8 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
   val runtimeAttributes = {
     val evaluateAttrs = call.task.runtimeAttributes.attrs mapValues (_.evaluate(lookup, callEngineFunction))
     // Fail the call if runtime attributes can't be evaluated
-    TryUtil.sequenceMap(evaluateAttrs, "Runtime attributes evaluation").get.mapValues(_.valueString)
+    val runtimeMap = TryUtil.sequenceMap(evaluateAttrs, "Runtime attributes evaluation").get
+    CondorRuntimeAttributes(runtimeMap)
   }
 
   /**
@@ -78,6 +71,47 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
     */
   override def execute: Future[BackendJobExecutionResponse] = Future(executeTask())
 
+  private def executeTask(): BackendJobExecutionResponse = {
+    val argv = Seq(HtCondorCommands.condor_submit, submitPath.toString)
+    val process = extProcess.externalProcess(argv, ProcessLogger(stdoutWriter.writeWithNewline, stderrWriter.writeWithNewline))
+    val condorReturnCode = process.exitValue() // blocks until process (i.e. condor submission) finishes
+    log.debug(s"Return code of condor submit command: $condorReturnCode")
+
+    List(stdoutWriter.writer, stderrWriter.writer).foreach(_.flushAndClose())
+
+    condorReturnCode match {
+      case 0 =>
+        log.info(s"${jobDescriptor.call.fullyQualifiedName} submitted to HtCondor. Waiting for the job to complete via. RC file status.")
+        trackTaskToCompletion()
+      case nonZeroExitCode: Int =>
+        FailedNonRetryableResponse(jobDescriptor.key,
+          new IllegalStateException(s"Execution process failed. HtCondor returned non zero status code: $condorReturnCode"), Option(condorReturnCode))
+    }
+  }
+
+  private def trackTaskToCompletion(): BackendJobExecutionResponse = {
+    val processReturnCode = extProcess.jobReturnCode(returnCodePath) // Blocks until process completes
+    log.debug(s"Process complete. RC file now exists with value: $processReturnCode")
+
+    processReturnCode match {
+      case rc: Int if rc == 0 | runtimeAttributes.continueOnReturnCode.continueFor(rc) => processSuccess(rc)
+      case _ =>
+        FailedNonRetryableResponse(jobDescriptor.key,
+          new IllegalStateException("RC file contains non zero process return code."), Option(processReturnCode))
+    }
+  }
+
+  private def processSuccess(rc: Int) = {
+    processOutputs(callEngineFunction, jobPaths) match {
+      case Success(outputs) => SucceededResponse(jobDescriptor.key, outputs)
+      case Failure(e) =>
+        val message = Option(e.getMessage) map {
+          ": " + _
+        } getOrElse ""
+        FailedNonRetryableResponse(jobDescriptor.key, new Throwable("Failed post processing of outputs" + message, e), Option(rc))
+    }
+  }
+
   /**
     * Abort a running job.
     */
@@ -91,15 +125,18 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
       val command = call.task.instantiateCommand(localizedInputs, callEngineFunction, identity).get
       log.debug(s"Creating bash script for executing command: $command.")
       writeScript(command, scriptPath, executionDir) // Writes the bash script for executing the command
-      scriptPath.addPermission(PosixFilePermission.OWNER_EXECUTE)
-      //TODO: need to access other requirements for submit file from runtime requirements
-      val attributes = Map(HtCondorRuntimeKeys.executable -> scriptPath.toString,
-        HtCondorRuntimeKeys.output -> stdoutPath.toString,
-        HtCondorRuntimeKeys.error -> stderrPath.toString)
-      cmds.submitCommand(submitPath, attributes) // This writes the condor submit file
+      scriptPath.addPermission(PosixFilePermission.OWNER_EXECUTE) // Add executable permissions to the script.
+      //TODO: Need to append other runtime attributes from Wdl to Condor submit file
+      val attributes = Map(HtCondorRuntimeKeys.Executable -> scriptPath.toString,
+          HtCondorRuntimeKeys.Output -> stdoutPath.toString,
+          HtCondorRuntimeKeys.Error -> stderrPath.toString,
+          HtCondorRuntimeKeys.Log -> jobPaths.htcondorLog.toString
+        )
+      cmds.generateSubmitFile(submitPath, attributes) // This writes the condor submit file
     } catch {
       case ex: Exception =>
         log.error(ex, s"Failed to prepare task: ${ex.getMessage}")
+        throw ex
     }
   }
 
@@ -115,72 +152,4 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
           |echo $$? > rc
           |""".stripMargin)
   }
-
-  private def executeTask(): BackendJobExecutionResponse = {
-    val newArgv: scala.Seq[String] = Seq(HtCondorCommands.condor_submit, submitPath.toString)
-    val process = extProcess.externalProcess(newArgv, ProcessLogger(stdoutWriter.writeWithNewline, stderrWriter.writeWithNewline))
-    val processReturnCode = process.exitValue() // blocks until process (i.e. condor submission) finishes
-    log.debug(s"processReturnCode  : $processReturnCode")
-
-    List(stdoutWriter.writer, stderrWriter.writer).foreach(_.flushAndClose())
-    log.debug(s"done flushing")
-    val stderrFileLength = Try(Files.size(jobPaths.submitFileStderr)).getOrElse(0L)
-    log.debug(s"stderr file length : $stderrFileLength ")
-
-    if (processReturnCode != 0) {
-      FailedNonRetryableResponse(jobDescriptor.key,
-        new IllegalStateException(s"Execution process failed. Process return code non zero: $processReturnCode"), Option(processReturnCode))
-    } else if (stderrFileLength > 0) {
-      FailedNonRetryableResponse(jobDescriptor.key,
-        new IllegalStateException("StdErr file is not empty"), None)
-    } else {
-      log.debug(s"Parse stdout output file")
-      val pattern = Pattern.compile(HtCondorCommands.submit_output_pattern)
-      //Number of lines in stdout for submit job will be 3 at max therefore reading all lines at once.
-      log.debug(s"output of submit process : ${stdoutPath.lines.toList}")
-      val line = jobPaths.submitFileStdout.lines.toList.last
-      val matcher = pattern.matcher(line)
-      log.debug(s"submit process stdout last line : $line")
-      if (!matcher.matches())
-        FailedNonRetryableResponse(jobDescriptor.key,
-          new IllegalStateException("HtCondor: Failed to retrive jobs(id) and cluster id"), Option(processReturnCode))
-      val jobId = matcher.group(1).toInt
-      val clusterId = matcher.group(2).toInt
-      log.debug(s"task job is : $jobId and cluster id is : $clusterId")
-      trackTaskStatus(CondorJob(CondorJobId(jobId, clusterId)))
-    }
-  }
-
-  @tailrec
-  private def trackTaskStatus(job: CondorJob): BackendJobExecutionResponse = {
-    val process = extProcess.externalProcess(extProcess.getCommandList(cmds.statusCommand()))
-    val processReturnCode = process.exitValue() // blocks until process finishes
-    log.debug(s"trackTaskStatus -> processReturnCode : $processReturnCode and stderr : ${extProcess.getProcessStderr().length}")
-
-    if (processReturnCode != 0 || extProcess.getProcessStderr().nonEmpty)
-      FailedNonRetryableResponse(jobDescriptor.key,
-        new IllegalStateException("StdErr file is not empty"), Option(processReturnCode))
-    else {
-      val status = parser.getJobStatus(extProcess.getProcessStdout(), job.condorJobId)
-      if (status == Succeeded)
-        processSuccess(processReturnCode)
-      else if (status == Failed)
-        FailedNonRetryableResponse(jobDescriptor.key, new IllegalStateException("Job Final Status: Failed"), Option(processReturnCode))
-      else {
-        Thread.sleep(5000) // Wait for 5 seconds
-        trackTaskStatus(job)
-      }
-    }
-
-  }
-
-  private def processSuccess(rc: Int) = {
-    processOutputs(callEngineFunction, jobPaths) match {
-      case Success(outputs) => SucceededResponse(jobDescriptor.key, outputs)
-      case Failure(e) =>
-        val message = Option(e.getMessage) map { ": " + _ } getOrElse ""
-        FailedNonRetryableResponse(jobDescriptor.key, new Throwable("Failed post processing of outputs" + message, e), Option(rc))
-    }
-  }
-
 }

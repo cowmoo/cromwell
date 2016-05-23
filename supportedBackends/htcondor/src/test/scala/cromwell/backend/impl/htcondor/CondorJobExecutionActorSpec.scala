@@ -29,22 +29,8 @@ class CondorJobExecutionActorSpec extends TestKit(ActorSystem("CondorJobExecutio
   with BeforeAndAfterAll
   with ImplicitSender {
 
-  private val htCondorParser: HtCondorClassAdParser = new HtCondorClassAdParser {}
-  private val htCondorCommands: HtCondorCommands = new HtCondorCommands {}
+  private val htCondorCommands: HtCondorCommands = new HtCondorCommands
   private val htCondorProcess: HtCondorProcess = mock[HtCondorProcess]
-  private val stdoutResult =
-    s"""<?xml version="1.0"?>
-       <!DOCTYPE classads SYSTEM "classads.dtd">
-       <classads>
-       <c>
-       <a n="ProcId"><i>2</i></a>
-       <a n="EnteredCurrentStatus"><i>1454439245</i></a>
-       <a n="ClusterId"><i>88</i></a>
-       <a n="JobStatus"><i>4</i></a>
-       <a n="MachineAttrSlotWeight0"><i>8</i></a>
-       </c>
-       </classads>
-     """.stripMargin
 
   private val helloWorldWdl =
     """
@@ -62,6 +48,40 @@ class CondorJobExecutionActorSpec extends TestKit(ActorSystem("CondorJobExecutio
       |  call hello
       |}
     """.stripMargin
+  private val backendConfig = ConfigFactory.parseString(
+    s"""{
+        |  root = "local-cromwell-executions"
+        |  filesystems {
+        |    local {
+        |      localization = [
+        |        "hard-link", "soft-link", "copy"
+        |      ]
+        |    }
+        |  }
+        |}
+        """.stripMargin)
+
+
+  private case class TestJobDescriptor(jobDescriptor: BackendJobDescriptor, jobPaths: JobPaths, backendConfigurationDescriptor: BackendConfigurationDescriptor)
+
+  private def prepareJob(runtimeString: String = ""): TestJobDescriptor = {
+    val backendWorkflowDescriptor = buildWorkflowDescriptor(wdl = helloWorldWdl, runtime = runtimeString)
+    val backendConfigurationDescriptor = BackendConfigurationDescriptor(backendConfig, ConfigFactory.load)
+    val jobDesc = jobDescriptorFromSingleCallWorkflow(backendWorkflowDescriptor)
+    val jobPaths = new JobPaths(backendWorkflowDescriptor, backendConfig, jobDesc.key)
+    val executionDir = jobPaths.callRoot
+    val stdout = Paths.get(executionDir.path.toString, "stdout")
+    stdout.toString.toFile.createIfNotExists(false)
+    TestJobDescriptor(jobDesc,jobPaths, backendConfigurationDescriptor)
+  }
+
+  private def cleanUpJob(jobPaths: JobPaths): Unit = {
+    jobPaths.callRoot.delete(true)
+  }
+
+  override def afterAll(): Unit = {
+    system.shutdown()
+  }
 
   private def buildWorkflowDescriptor(wdl: WdlSource,
                                       inputs: Map[String, WdlValue] = Map.empty,
@@ -76,151 +96,121 @@ class CondorJobExecutionActorSpec extends TestKit(ActorSystem("CondorJobExecutio
   }
 
   private def jobDescriptorFromSingleCallWorkflow(workflowDescriptor: BackendWorkflowDescriptor,
-                                          inputs: Map[String, WdlValue] = Map.empty) = {
+                                                  inputs: Map[String, WdlValue] = Map.empty) = {
     val call = workflowDescriptor.workflowNamespace.workflow.calls.head
     val jobKey = new BackendJobDescriptorKey(call, None, 1)
     new BackendJobDescriptor(workflowDescriptor, jobKey, inputs)
   }
 
-  private val backendConfig = ConfigFactory.parseString(
-    s"""{
-        |  root = "local-cromwell-executions"
-        |  filesystems {
-        |    local {
-        |      localization = [
-        |        "hard-link", "soft-link", "copy"
-        |      ]
-        |    }
-        |  }
-        |}
-        """.stripMargin)
-
-  private val backendWorkflowDescriptor = buildWorkflowDescriptor(helloWorldWdl)
-  private val backendConfigurationDescriptor = BackendConfigurationDescriptor(backendConfig, ConfigFactory.load)
-
-  private val jobDescriptor = jobDescriptorFromSingleCallWorkflow(backendWorkflowDescriptor)
-  private val jobPaths = new JobPaths(backendWorkflowDescriptor, backendConfig, jobDescriptor.key)
-
-  private val executionDir = jobPaths.callRoot
-
-  private val stdout = Paths.get(executionDir.path.toString, "stdout")
-  stdout.toString.toFile.createIfNotExists(false)
-  stdout <<
-    """Submitting job(s)..
-      |2 job(s) submitted to cluster 88.
-    """.stripMargin.trim
-
-  private val stderr = Paths.get(executionDir.path.toString, "stderr")
-  stderr.toString.toFile.createIfNotExists(false)
-
-  private val rc = Paths.get(executionDir.path.toString, "rc")
-  rc.toString.toFile.createIfNotExists(false)
-  rc << s"""0""".stripMargin.trim
-
   trait MockWriter extends Writer {
     var closed = false
-    override def close() = closed = true
-    override def flush() = { }
-    override def write(a: Array[Char], b: Int, c: Int) = {}
-  }
 
-  trait MockPathWriter extends PathWriter {
-    override val path: Path = mock[Path]
-    override lazy val writer : Writer = new MockWriter {}
+    override def close() = closed = true
+
+    override def flush() = {}
+
+    override def write(a: Array[Char], b: Int, c: Int) = {}
   }
 
   "executeTask method" should {
     "return succeeded task status with stdout " in {
+      val jobDescriptor = prepareJob()
+      val (job, jobPaths, backendConfigDesc) = (jobDescriptor.jobDescriptor, jobDescriptor.jobPaths, jobDescriptor.backendConfigurationDescriptor)
       val stubProcess = mock[Process]
-      val stubUntailed = new UntailedWriter(stdout) with MockPathWriter
-      val stubTailed = new TailedWriter(stderr, 100) with MockPathWriter
+      val stubUntailed = new UntailedWriter(jobPaths.stdout) with MockPathWriter
+      val stubTailed = new TailedWriter(jobPaths.stderr, 100) with MockPathWriter
       val stderrResult = ""
 
-      when(htCondorProcess.getCommandList(any[String])).thenReturn(Seq.empty[String])
+      when(htCondorProcess.commandList(any[String])).thenReturn(Seq.empty[String])
       when(htCondorProcess.externalProcess(any[Seq[String]], any[ProcessLogger])).thenReturn(stubProcess)
       when(stubProcess.exitValue()).thenReturn(0)
-      when(htCondorProcess.getTailedWriter(any[Int], any[Path])).thenReturn(stubTailed)
-      when(htCondorProcess.getUntailedWriter(any[Path])).thenReturn(stubUntailed)
-      when(htCondorProcess.getProcessStdout()).thenReturn(stdoutResult)
-      when(htCondorProcess.getProcessStderr()).thenReturn(stderrResult)
+      when(htCondorProcess.tailedWriter(any[Int], any[Path])).thenReturn(stubTailed)
+      when(htCondorProcess.untailedWriter(any[Path])).thenReturn(stubUntailed)
+      when(htCondorProcess.processStderr).thenReturn(stderrResult)
 
-      val backend = TestActorRef(new CondorJobExecutionActor(jobDescriptor, backendConfigurationDescriptor) {
+      val backend = TestActorRef(new CondorJobExecutionActor(job, backendConfigDesc) {
         override lazy val cmds = htCondorCommands
         override lazy val extProcess = htCondorProcess
-        override lazy val parser = htCondorParser
       }).underlyingActor
 
       whenReady(backend.execute) { response =>
         response shouldBe a[SucceededResponse]
-        verify(htCondorProcess, times(2)).externalProcess(any[Seq[String]], any[ProcessLogger])
-        verify(htCondorProcess, times(1)).getTailedWriter(any[Int], any[Path])
-        verify(htCondorProcess, times(1)).getUntailedWriter(any[Path])
+        verify(htCondorProcess, times(1)).externalProcess(any[Seq[String]], any[ProcessLogger])
+        verify(htCondorProcess, times(1)).tailedWriter(any[Int], any[Path])
+        verify(htCondorProcess, times(1)).untailedWriter(any[Path])
       }
 
+      cleanUpJob(jobPaths)
     }
   }
 
   "executeTask method" should {
-    "return failed task status with stderr " in {
-      val backend = TestActorRef(new CondorJobExecutionActor(jobDescriptor, backendConfigurationDescriptor){
+    "return failed task status with stderr on non-zero process exit" in {
+      val jobDescriptor = prepareJob()
+      val (job, jobPaths, backendConfigDesc) = (jobDescriptor.jobDescriptor, jobDescriptor.jobPaths, jobDescriptor.backendConfigurationDescriptor)
+
+      val backend = TestActorRef(new CondorJobExecutionActor(job, backendConfigDesc) {
         override lazy val cmds = htCondorCommands
         override lazy val extProcess = htCondorProcess
-        override lazy val parser = htCondorParser
-      }).underlyingActor
-      stderr <<
-        s"""
-           |test
-         """.stripMargin
-      val stubProcess = mock[Process]
-      val stubUntailed = new UntailedWriter(stdout) with MockPathWriter
-      val stubTailed = new TailedWriter(stderr, 100) with MockPathWriter
-      val stderrResult = "failed"
-
-      when(htCondorProcess.externalProcess(any[Seq[String]], any[ProcessLogger])).thenReturn(stubProcess)
-      when(stubProcess.exitValue()).thenReturn(0)
-      when(htCondorProcess.getTailedWriter(any[Int], any[Path])).thenReturn(stubTailed)
-      when(htCondorProcess.getUntailedWriter(any[Path])).thenReturn(stubUntailed)
-      when(htCondorProcess.getProcessStdout()).thenReturn(stdoutResult)
-      when(htCondorProcess.getProcessStderr()).thenReturn(stderrResult)
-
-      whenReady(backend.execute) { response =>
-        response shouldBe a[FailedNonRetryableResponse]
-        assert(response.asInstanceOf[FailedNonRetryableResponse].throwable.getMessage == "StdErr file is not empty")
-      }
-    }
-  }
-
-  "executeTask method" should {
-    "return failed task status with stderr on non-zero process exit " in {
-      val backend = TestActorRef(new CondorJobExecutionActor(jobDescriptor, backendConfigurationDescriptor){
-        override lazy val cmds = htCondorCommands
-        override lazy val extProcess = htCondorProcess
-        override lazy val parser = htCondorParser
       }).underlyingActor
       val stubProcess = mock[Process]
-      val stubUntailed = new UntailedWriter(stdout) with MockPathWriter
-      val stubTailed = new TailedWriter(stderr, 100) with MockPathWriter
+      val stubUntailed = new UntailedWriter(jobPaths.stdout) with MockPathWriter
+      val stubTailed = new TailedWriter(jobPaths.stderr, 100) with MockPathWriter
       val stderrResult = ""
 
       when(htCondorProcess.externalProcess(any[Seq[String]], any[ProcessLogger])).thenReturn(stubProcess)
-      when(stubProcess.exitValue()).thenReturn(-1)
-      when(htCondorProcess.getTailedWriter(any[Int], any[Path])).thenReturn(stubTailed)
-      when(htCondorProcess.getUntailedWriter(any[Path])).thenReturn(stubUntailed)
-      when(htCondorProcess.getProcessStdout()).thenReturn(stdoutResult)
-      when(htCondorProcess.getProcessStderr()).thenReturn(stderrResult)
+      when(stubProcess.exitValue()).thenReturn(0)
+      when(htCondorProcess.tailedWriter(any[Int], any[Path])).thenReturn(stubTailed)
+      when(htCondorProcess.untailedWriter(any[Path])).thenReturn(stubUntailed)
+      when(htCondorProcess.processStderr).thenReturn(stderrResult)
+      when(htCondorProcess.jobReturnCode(any[Path])).thenReturn(-1)
 
       whenReady(backend.execute) { response =>
         response shouldBe a[FailedNonRetryableResponse]
-        assert(response.asInstanceOf[FailedNonRetryableResponse].throwable.getMessage == "Execution process failed. Process return code non zero: -1")
+        assert(response.asInstanceOf[FailedNonRetryableResponse].throwable.getMessage.contains("RC file contains non zero process return code"))
       }
+
+      cleanUpJob(jobPaths)
     }
   }
 
-  override def afterAll(): Unit = {
-    stdout.delete()
-    stderr.delete()
-    rc.delete()
-    executionDir.delete(true)
-    system.shutdown()
+  "executeTask method" should {
+    "return a successful task status even with a non-zero process exit" in {
+      val runtime =
+        """
+          |runtime {
+          | continueOnReturnCode: [911]
+          |}
+        """.stripMargin
+      val jobDescriptor = prepareJob(runtimeString = runtime)
+      val (job, jobPaths, backendConfigDesc) = (jobDescriptor.jobDescriptor, jobDescriptor.jobPaths, jobDescriptor.backendConfigurationDescriptor)
+
+      val backend = TestActorRef(new CondorJobExecutionActor(job, backendConfigDesc) {
+        override lazy val cmds = htCondorCommands
+        override lazy val extProcess = htCondorProcess
+      }).underlyingActor
+      val stubProcess = mock[Process]
+      val stubUntailed = new UntailedWriter(jobPaths.stdout) with MockPathWriter
+      val stubTailed = new TailedWriter(jobPaths.stderr, 100) with MockPathWriter
+      val stderrResult = ""
+
+      when(htCondorProcess.externalProcess(any[Seq[String]], any[ProcessLogger])).thenReturn(stubProcess)
+      when(stubProcess.exitValue()).thenReturn(0)
+      when(htCondorProcess.tailedWriter(any[Int], any[Path])).thenReturn(stubTailed)
+      when(htCondorProcess.untailedWriter(any[Path])).thenReturn(stubUntailed)
+      when(htCondorProcess.processStderr).thenReturn(stderrResult)
+      when(htCondorProcess.jobReturnCode(any[Path])).thenReturn(911)
+
+      whenReady(backend.execute) { response =>
+        response shouldBe a[SucceededResponse]
+      }
+
+      cleanUpJob(jobPaths)
+    }
+  }
+
+  trait MockPathWriter extends PathWriter {
+    override lazy val writer: Writer = new MockWriter {}
+    override val path: Path = mock[Path]
   }
 }

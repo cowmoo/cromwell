@@ -62,14 +62,17 @@ class JobPaths(workflowDescriptor: BackendWorkflowDescriptor,
     }
   }
 
+  private val jobName = jobKey.call.unqualifiedName
+
   val callRoot = callPathBuilder(workflowRoot)
   val callDockerRoot = callPathBuilder(dockerWorkflowRoot)
 
   val stdout = callRoot.resolve("stdout")
   val stderr = callRoot.resolve("stderr")
-  val script = callRoot.resolve("script.sh")
+  val script = callRoot.resolve(s"$jobName-script.sh")
   val returnCode = callRoot.resolve("rc")
   val submitFile = callRoot.resolve("submitfile")
   val submitFileStderr = callRoot.resolve("submitfile.stderr")
   val submitFileStdout = callRoot.resolve("submitfile.stdout")
+  val htcondorLog = callRoot.resolve(s"$jobName.log")
 }
