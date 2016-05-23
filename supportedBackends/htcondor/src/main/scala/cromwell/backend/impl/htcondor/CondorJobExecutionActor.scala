@@ -62,7 +62,7 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
     * Restart or resume a previously-started job.
     */
   override def recover: Future[BackendJobExecutionResponse] = {
-    log.warning(s"HtCondor backend currently doesn't support recovering jobs. Starting ${jobDescriptor.key.call.fullyQualifiedName} again.")
+    log.warning("HtCondor backend currently doesn't support recovering jobs. Starting {} again.", jobDescriptor.key.call.fullyQualifiedName)
     Future(executeTask())
   }
 
@@ -75,13 +75,13 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
     val argv = Seq(HtCondorCommands.condor_submit, submitPath.toString)
     val process = extProcess.externalProcess(argv, ProcessLogger(stdoutWriter.writeWithNewline, stderrWriter.writeWithNewline))
     val condorReturnCode = process.exitValue() // blocks until process (i.e. condor submission) finishes
-    log.debug(s"Return code of condor submit command: $condorReturnCode")
+    log.debug("Return code of condor submit command: {}", condorReturnCode)
 
     List(stdoutWriter.writer, stderrWriter.writer).foreach(_.flushAndClose())
 
     condorReturnCode match {
       case 0 =>
-        log.info(s"${jobDescriptor.call.fullyQualifiedName} submitted to HtCondor. Waiting for the job to complete via. RC file status.")
+        log.info("{} submitted to HtCondor. Waiting for the job to complete via. RC file status.", jobDescriptor.call.fullyQualifiedName)
         trackTaskToCompletion()
       case nonZeroExitCode: Int =>
         FailedNonRetryableResponse(jobDescriptor.key,
@@ -91,7 +91,7 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
 
   private def trackTaskToCompletion(): BackendJobExecutionResponse = {
     val processReturnCode = extProcess.jobReturnCode(returnCodePath) // Blocks until process completes
-    log.debug(s"Process complete. RC file now exists with value: $processReturnCode")
+    log.debug("Process complete. RC file now exists with value: {}", processReturnCode)
 
     processReturnCode match {
       case rc: Int if rc == 0 | runtimeAttributes.continueOnReturnCode.continueFor(rc) => processSuccess(rc)
@@ -118,12 +118,12 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
   override def abortJob(): Unit = Future.failed(new UnsupportedOperationException("HtCondorBackend currently doesn't support aborting jobs."))
 
   override def preStart(): Unit = {
-    log.debug(s"Creating execution folder: $executionDir")
+    log.debug("Creating execution folder: {}", executionDir)
     executionDir.toString.toFile.createIfNotExists(true)
     try {
       val localizedInputs = localizeInputs(jobPaths, false, fileSystems, jobDescriptor.inputs)
       val command = call.task.instantiateCommand(localizedInputs, callEngineFunction, identity).get
-      log.debug(s"Creating bash script for executing command: $command.")
+      log.debug("Creating bash script for executing command: {}", command)
       writeScript(command, scriptPath, executionDir) // Writes the bash script for executing the command
       scriptPath.addPermission(PosixFilePermission.OWNER_EXECUTE) // Add executable permissions to the script.
       //TODO: Need to append other runtime attributes from Wdl to Condor submit file
@@ -135,7 +135,7 @@ class CondorJobExecutionActor(override val jobDescriptor: BackendJobDescriptor,
       cmds.generateSubmitFile(submitPath, attributes) // This writes the condor submit file
     } catch {
       case ex: Exception =>
-        log.error(ex, s"Failed to prepare task: ${ex.getMessage}")
+        log.error(ex, "Failed to prepare task: " + ex.getMessage)
         throw ex
     }
   }
