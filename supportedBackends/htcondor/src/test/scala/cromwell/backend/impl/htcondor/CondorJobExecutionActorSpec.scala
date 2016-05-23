@@ -72,11 +72,17 @@ class CondorJobExecutionActorSpec extends TestKit(ActorSystem("CondorJobExecutio
     val executionDir = jobPaths.callRoot
     val stdout = Paths.get(executionDir.path.toString, "stdout")
     stdout.toString.toFile.createIfNotExists(false)
+    jobPaths.submitFileStdout.toString.toFile.createIfNotExists(false)
+    jobPaths.submitFileStdout <<
+      """Submitting job(s)..
+        |1 job(s) submitted to cluster 88.
+      """.stripMargin.trim
+    jobPaths.submitFileStderr.toString.toFile.createIfNotExists(false)
     TestJobDescriptor(jobDesc,jobPaths, backendConfigurationDescriptor)
   }
 
   private def cleanUpJob(jobPaths: JobPaths): Unit = {
-    jobPaths.callRoot.delete(true)
+    jobPaths.workflowRoot.delete(true)
   }
 
   override def afterAll(): Unit = {
