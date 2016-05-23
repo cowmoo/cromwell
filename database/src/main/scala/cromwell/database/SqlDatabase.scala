@@ -2,14 +2,10 @@ package cromwell.database
 
 import java.sql.{Clob, SQLTransientException, Timestamp}
 
-import cromwell.database.SqlDatabase.StatusResolutionFn
 import cromwell.database.obj._
 
 import scala.concurrent.{ExecutionContext, Future}
 
-object SqlDatabase {
-  type StatusResolutionFn = (String, String) => String
-}
 
 trait SqlDatabase extends AutoCloseable {
   protected def isTransient(throwable: Throwable): Boolean = {
@@ -180,8 +176,7 @@ trait SqlDatabase extends AutoCloseable {
   protected def addMetadataEvent(workflowUuid: String,
                                  key: String,
                                  value: String,
-                                 timestamp: Timestamp,
-                                 statusResolutionFn: StatusResolutionFn)
+                                 timestamp: Timestamp)
                                 (implicit ec: ExecutionContext): Future[Unit]
 
   protected def addMetadataEvent(workflowUuid: String,

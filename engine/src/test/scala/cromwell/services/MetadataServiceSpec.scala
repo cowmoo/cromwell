@@ -4,14 +4,12 @@ import akka.actor.PoisonPill
 import akka.pattern.ask
 import com.typesafe.config.ConfigFactory
 import cromwell.core.{KnowsWhatTimeItIs, WorkflowId}
-import cromwell.database.SqlDatabase.StatusResolutionFn
 import cromwell.services.MetadataServiceActor._
 
 class MetadataServiceSpec extends CromwellServicesSpec with KnowsWhatTimeItIs {
 
   val config = ConfigFactory.load("{}")
-  val statusResolutionFn: StatusResolutionFn = (thiz, that) => thiz
-  val actor = actorSystem.actorOf(MetadataServiceActor.props(config, config, statusResolutionFn))
+  val actor = actorSystem.actorOf(MetadataServiceActor.props(config, config))
 
   val workflowId = WorkflowId.randomId()
 

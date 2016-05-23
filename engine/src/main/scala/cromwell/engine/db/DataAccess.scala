@@ -9,7 +9,6 @@ import cromwell.core.retry.{Retry, SimpleExponentialBackoff}
 import cromwell.core._
 import cromwell.database.SqlConverters._
 import cromwell.database.SqlDatabase
-import cromwell.database.SqlDatabase.StatusResolutionFn
 import cromwell.database.obj._
 import cromwell.database.slick.SlickDatabase
 import cromwell.engine.ExecutionIndex._
@@ -367,12 +366,12 @@ trait DataAccess extends AutoCloseable {
     addWorkflowFailureEvent(workflowId.toString, failureEvents)
   }
 
-  def addMetadataEvent(metadataEvent: MetadataEvent, statusResolutionFn: StatusResolutionFn)(implicit ec: ExecutionContext): Future[Unit] = {
+  def addMetadataEvent(metadataEvent: MetadataEvent)(implicit ec: ExecutionContext): Future[Unit] = {
     val key = metadataEvent.key
     val workflowUuid = key.workflowId.id.toString
     val timestamp = metadataEvent.timestamp
     key.jobKey match {
-      case None => addMetadataEvent(workflowUuid, key.key, metadataEvent.value.value, timestamp, statusResolutionFn)
+      case None => addMetadataEvent(workflowUuid, key.key, metadataEvent.value.value, timestamp)
       case Some(jobKey) => addMetadataEvent(workflowUuid, key.key, jobKey.callFqn, jobKey.index, jobKey.attempt, metadataEvent.value.value, timestamp)
     }
   }

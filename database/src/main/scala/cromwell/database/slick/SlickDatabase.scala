@@ -5,8 +5,7 @@ import java.util.UUID
 import java.util.concurrent.{ExecutorService, Executors}
 
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
-import cromwell.core.WorkflowMetadataKeys
-import cromwell.database.SqlDatabase.StatusResolutionFn
+import cromwell.core.{WorkflowMetadataKeys, WorkflowState}
 import cromwell.database.obj._
 import cromwell.database.SqlDatabase
 import lenthall.config.ScalaConfig._
@@ -16,6 +15,7 @@ import slick.driver.JdbcProfile
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
+import scalaz.Semigroup
 
 
 object SlickDatabase {
@@ -674,23 +674,25 @@ class SlickDatabase(databaseConfig: Config) extends SqlDatabase {
   override def addMetadataEvent(workflowUuid: String,
                                 key: String,
                                 value: String,
-                                timestamp: Timestamp,
-                                statusResolutionFn: StatusResolutionFn)(implicit ec: ExecutionContext): Future[Unit] = {
+                                timestamp: Timestamp)(implicit ec: ExecutionContext): Future[Unit] = {
 
     val appendToMetadataJournal = dataAccess.metadataAutoInc += Metadatum(workflowUuid, key,
       callFqn = None, index = None, attempt = None, Option(value), timestamp)
 
-    def updateStatus(existingStatus: Option[String], incomingStatus: String): Option[String] = {
-      val statusResolver = statusResolutionFn.curried(incomingStatus)
-      existingStatus map statusResolver orElse Option(incomingStatus)
+    def updateState(existing: Option[String], incoming: String): Option[String] = {
+      val appender = implicitly[Semigroup[WorkflowState]]
+      val existingState = existing map WorkflowState.fromString
+      val incomingState = WorkflowState.fromString(incoming)
+      val newState = existingState map { appender.append(_, incomingState) } orElse Option(incomingState)
+      newState map { _.toString }
     }
 
     val query = dataAccess.workflowMetadataSummariesByUuid(workflowUuid).extract
     def updateSummary(existingSummary: Option[WorkflowMetadataSummary]) = key match {
         case WorkflowMetadataKeys.Name => query.map(_.name).update(Option(value))
         case WorkflowMetadataKeys.Status =>
-          val newValue = updateStatus(existingSummary flatMap { _.status}, value)
-          query.map(_.status).update(newValue)
+          val newState = updateState(existingSummary flatMap { _.status}, value)
+          query.map(_.status).update(newState)
         case WorkflowMetadataKeys.StartTime => query.map(_.startDate).update(Option(Timestamp.valueOf(value)))
         case WorkflowMetadataKeys.EndTime => query.map(_.endDate).update(Option(Timestamp.valueOf(value)))
         case _ => DBIO.successful(())

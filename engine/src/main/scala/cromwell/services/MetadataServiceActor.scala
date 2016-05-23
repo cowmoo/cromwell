@@ -3,7 +3,6 @@ package cromwell.services
 import akka.actor.{Actor, Props}
 import com.typesafe.config.Config
 import cromwell.core.WorkflowId
-import cromwell.database.SqlDatabase.StatusResolutionFn
 import cromwell.engine.db.DataAccess
 import cromwell.services.MetadataServiceActor._
 import cromwell.services.ServiceRegistryActor.ServiceRegistryMessage
@@ -38,14 +37,13 @@ object MetadataServiceActor {
   case class MetadataLookupResponse(query: MetadataQuery, eventList: Seq[MetadataEvent]) extends MetadataServiceResponse
   case class MetadataServiceKeyLookupFailed(query: MetadataQuery, reason: Throwable) extends MetadataServiceResponse
 
-  def props(serviceConfig: Config, globalConfig: Config, statusResolutionFn: StatusResolutionFn) = {
-    Props(MetadataServiceActor(serviceConfig, globalConfig, statusResolutionFn))
+  def props(serviceConfig: Config, globalConfig: Config) = {
+    Props(MetadataServiceActor(serviceConfig, globalConfig))
   }
 }
 
 case class MetadataServiceActor(serviceConfig: Config,
-                                globalConfig: Config,
-                                statusResolutionFn: StatusResolutionFn) extends Actor {
+                                globalConfig: Config) extends Actor {
 
   val dataAccess = DataAccess.globalDataAccess
 
@@ -60,7 +58,7 @@ case class MetadataServiceActor(serviceConfig: Config,
   def receive = {
     case action@PutMetadataAction(event) =>
       val sndr = sender()
-      dataAccess.addMetadataEvent(event, statusResolutionFn) onComplete {
+      dataAccess.addMetadataEvent(event) onComplete {
         case Success(_) => sndr ! MetadataPutAcknowledgement(action)
         case Failure(t) => sndr ! MetadataPutFailed(action, t)
       }
