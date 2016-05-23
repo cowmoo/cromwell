@@ -5,6 +5,7 @@ import java.util.UUID
 import java.util.concurrent.{ExecutorService, Executors}
 
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
+import cromwell.database.SqlDatabase.StatusResolutionFn
 import cromwell.database.obj._
 import cromwell.database.{SqlDatabase, WorkflowMetadataKeys}
 import lenthall.config.ScalaConfig._
@@ -673,7 +674,7 @@ class SlickDatabase(databaseConfig: Config) extends SqlDatabase {
                                 key: String,
                                 value: String,
                                 timestamp: Timestamp,
-                                statusResolutionFn: (String, String) => String)(implicit ec: ExecutionContext): Future[Unit] = {
+                                statusResolutionFn: StatusResolutionFn)(implicit ec: ExecutionContext): Future[Unit] = {
 
     val appendToMetadataJournal = dataAccess.metadataAutoInc += Metadatum(workflowUuid, key,
       callFqn = None, index = None, attempt = None, Option(value), timestamp)

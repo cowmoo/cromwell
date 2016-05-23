@@ -4,7 +4,7 @@ import akka.actor.PoisonPill
 import akka.pattern.ask
 import com.typesafe.config.ConfigFactory
 import cromwell.core.{KnowsWhatTimeItIs, WorkflowId}
-import cromwell.engine.db.DataAccess.StatusResolutionFn
+import cromwell.database.SqlDatabase.StatusResolutionFn
 import cromwell.services.MetadataServiceActor._
 
 class MetadataServiceSpec extends CromwellServicesSpec with KnowsWhatTimeItIs {

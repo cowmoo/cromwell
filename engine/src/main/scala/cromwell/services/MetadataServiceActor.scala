@@ -3,8 +3,8 @@ package cromwell.services
 import akka.actor.{Actor, Props}
 import com.typesafe.config.Config
 import cromwell.core.WorkflowId
+import cromwell.database.SqlDatabase.StatusResolutionFn
 import cromwell.engine.db.DataAccess
-import cromwell.engine.db.DataAccess.StatusResolutionFn
 import cromwell.services.MetadataServiceActor._
 import cromwell.services.ServiceRegistryActor.ServiceRegistryMessage
 
