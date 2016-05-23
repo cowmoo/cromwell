@@ -4,6 +4,7 @@ import akka.actor.{Actor, Props}
 import com.typesafe.config.Config
 import cromwell.core.WorkflowId
 import cromwell.engine.db.DataAccess
+import cromwell.engine.db.DataAccess.StatusResolutionFn
 import cromwell.services.MetadataServiceActor._
 import cromwell.services.ServiceRegistryActor.ServiceRegistryMessage
 
@@ -37,10 +38,9 @@ object MetadataServiceActor {
   case class MetadataLookupResponse(query: MetadataQuery, eventList: Seq[MetadataEvent]) extends MetadataServiceResponse
   case class MetadataServiceKeyLookupFailed(query: MetadataQuery, reason: Throwable) extends MetadataServiceResponse
 
-  def props(serviceConfig: Config, globalConfig: Config, statusConflictResolutionFn: StatusResolutionFn) = {
-    Props(MetadataServiceActor(serviceConfig, globalConfig, statusConflictResolutionFn))
+  def props(serviceConfig: Config, globalConfig: Config, statusResolutionFn: StatusResolutionFn) = {
+    Props(MetadataServiceActor(serviceConfig, globalConfig, statusResolutionFn))
   }
-  type StatusResolutionFn = (String, String) => String
 }
 
 case class MetadataServiceActor(serviceConfig: Config,

@@ -15,12 +15,11 @@ import cromwell.engine.ExecutionIndex._
 import cromwell.engine.ExecutionStatus._
 import cromwell.engine._
 import cromwell.engine.backend.{OldStyleBackend, OldStyleBackendCallJobDescriptor, _}
-import cromwell.engine.db.DataAccess.{RetryBackoff, WorkflowExecutionAndAux}
+import cromwell.engine.db.DataAccess.{RetryBackoff, StatusResolutionFn, WorkflowExecutionAndAux}
 import cromwell.engine.db.EngineConverters._
 import cromwell.engine.finalcall.OldStyleFinalCall
 import cromwell.engine.workflow.OldStyleWorkflowManagerActor.WorkflowNotFoundException
 import cromwell.engine.workflow.{BackendCallKey, ExecutionStoreKey, _}
-import cromwell.services.MetadataServiceActor.StatusResolutionFn
 import cromwell.services._
 import cromwell.webservice.{CallCachingParameters, WorkflowQueryParameters, WorkflowQueryResponse}
 import org.apache.commons.lang3.StringUtils
@@ -43,6 +42,7 @@ object DataAccess {
 
   val FailureEventMaxMessageLength = 1024
   val RetryBackoff = SimpleExponentialBackoff(50 millis, 1 seconds, 1D)
+  type StatusResolutionFn = (String, String) => String
 }
 
 trait DataAccess extends AutoCloseable {
