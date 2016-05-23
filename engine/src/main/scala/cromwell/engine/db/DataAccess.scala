@@ -6,7 +6,7 @@ import java.util.Date
 import akka.actor.ActorSystem
 import cromwell.backend.{ExecutionEventEntry, ExecutionHash, JobKey}
 import cromwell.core.retry.{Retry, SimpleExponentialBackoff}
-import cromwell.core.{CallOutput, CallOutputs, WorkflowId}
+import cromwell.core._
 import cromwell.database.SqlConverters._
 import cromwell.database.SqlDatabase
 import cromwell.database.SqlDatabase.StatusResolutionFn

@@ -6,7 +6,7 @@ import akka.testkit._
 import com.typesafe.config.ConfigFactory
 import cromwell.CallCachingWorkflowSpec._
 import cromwell.CromwellSpec.DockerTest
-import cromwell.engine.WorkflowSucceeded
+import cromwell.core.WorkflowSucceeded
 import cromwell.engine.workflow.OldStyleWorkflowManagerActor
 import cromwell.engine.workflow.OldStyleWorkflowManagerActor.{WorkflowMetadata, WorkflowStatus}
 import cromwell.util.SampleWdl

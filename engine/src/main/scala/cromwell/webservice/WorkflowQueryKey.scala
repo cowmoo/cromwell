@@ -1,7 +1,6 @@
 package cromwell.webservice
 
-import cromwell.core.{ErrorOr, WorkflowId}
-import cromwell.engine.WorkflowState
+import cromwell.core.{ErrorOr, WorkflowId, WorkflowState}
 import org.joda.time.DateTime
 
 import scala.language.postfixOps

@@ -4,7 +4,7 @@ import akka.actor.{Actor, ActorRef, Props}
 import akka.event.Logging
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
-import cromwell.core.WorkflowId
+import cromwell.core.{WorkflowAborted, WorkflowId, WorkflowState, WorkflowSubmitted}
 import cromwell.engine._
 import cromwell.engine.backend.{CallLogs, OldStyleBackend}
 import cromwell.engine.workflow.{OldStyleWorkflowManagerActor, WorkflowManagerActor}
@@ -114,7 +114,7 @@ class CromwellApiHandler(requestHandlerActor: ActorRef) extends Actor {
       val submitMsg = WorkflowManagerActor.SubmitWorkflowCommand(source)
       requestHandlerActor ! submitMsg
     case WorkflowManagerSubmitSuccess(id) =>
-      context.parent ! RequestComplete(StatusCodes.Created, WorkflowSubmitResponse(id.toString, engine.WorkflowSubmitted.toString))
+      context.parent ! RequestComplete(StatusCodes.Created, WorkflowSubmitResponse(id.toString, WorkflowSubmitted.toString))
     case WorkflowManagerSubmitFailure(e) =>
       error(e) {
         case _: IllegalArgumentException => RequestComplete(StatusCodes.BadRequest, APIResponse.fail(e))
@@ -128,7 +128,7 @@ class CromwellApiHandler(requestHandlerActor: ActorRef) extends Actor {
 
     case WorkflowManagerBatchSubmitResponse(responses) =>
       val requestResponse: Seq[Either[WorkflowSubmitResponse, FailureResponse]] = responses.map {
-        case WorkflowManagerSubmitSuccess(id) => Left(WorkflowSubmitResponse(id.toString, engine.WorkflowSubmitted.toString))
+        case WorkflowManagerSubmitSuccess(id) => Left(WorkflowSubmitResponse(id.toString, core.WorkflowSubmitted.toString))
         case WorkflowManagerSubmitFailure(e) =>
           Right(e match {
             case _: IllegalArgumentException => APIResponse.fail(e)

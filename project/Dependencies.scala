@@ -49,8 +49,15 @@ object Dependencies {
     "org.scalaz" % "scalaz-core_2.11" % "7.1.3"
   ) ++ testDependencies ++ googleCloudDependencies
 
-  val databaseDependencies = List(
+  val coreDependencies = List(
+    wdl4sDependency,
     "org.broadinstitute" %% "lenthall" % lenthallV,
+    "com.typesafe" % "config" % "1.3.0",
+    "com.typesafe.akka" %% "akka-actor" % akkaV,
+    "org.apache.commons" % "commons-lang3" % "3.4"
+  ) ++ testDependencies ++ googleApiClientDependencies
+
+  val databaseDependencies = List(
     "com.typesafe.slick" %% "slick" % slickV,
     "com.typesafe.slick" %% "slick-hikaricp" % slickV,
     "org.hsqldb" % "hsqldb" % "2.3.2",
@@ -60,15 +67,7 @@ object Dependencies {
     // See: http://stackoverflow.com/questions/20880783/how-to-get-liquibase-to-log-using-slf4j
     "com.mattbertolini" % "liquibase-slf4j" % "2.0.0",
     "com.github.pathikrit" %% "better-files" % betterFilesV % Test
-  ) ++ testDependencies
-
-  val coreDependencies = List(
-    wdl4sDependency,
-    "org.broadinstitute" %% "lenthall" % lenthallV,
-    "com.typesafe" % "config" % "1.3.0",
-    "com.typesafe.akka" %% "akka-actor" % akkaV,
-    "org.apache.commons" % "commons-lang3" % "3.4"
-  ) ++ testDependencies ++ googleApiClientDependencies
+  ) ++ coreDependencies
 
   val backendDependencies = List(
     "joda-time" % "joda-time" % "2.8.2",

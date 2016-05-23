@@ -5,9 +5,10 @@ import java.util.UUID
 import java.util.concurrent.{ExecutorService, Executors}
 
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
+import cromwell.core.WorkflowMetadataKeys
 import cromwell.database.SqlDatabase.StatusResolutionFn
 import cromwell.database.obj._
-import cromwell.database.{SqlDatabase, WorkflowMetadataKeys}
+import cromwell.database.SqlDatabase
 import lenthall.config.ScalaConfig._
 import org.slf4j.LoggerFactory
 import slick.backend.DatabaseConfig

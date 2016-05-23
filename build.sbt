@@ -10,6 +10,7 @@ lazy val gcsfilesystem = (project in file("filesystems/gcs"))
   .configs(CromwellNoIntegrationTest).settings(inConfig(CromwellNoIntegrationTest)(Defaults.testTasks): _*)
 
 lazy val database = (project in file("database"))
+  .dependsOn(core % "test->test;compile->compile")
   .settings(databaseSettings:_*)
   .configs(AllTests).settings(inConfig(AllTests)(Defaults.testTasks): _*)
   .configs(CromwellIntegrationTest).settings(inConfig(CromwellIntegrationTest)(Defaults.testTasks): _*)

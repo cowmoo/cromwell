@@ -6,7 +6,7 @@ import akka.testkit.{EventFilter, TestActorRef, _}
 import cromwell.CromwellSpec.DockerTest
 import cromwell.CromwellTestkitSpec
 import cromwell.CromwellTestkitSpec._
-import cromwell.core.{CallOutput, WorkflowId}
+import cromwell.core._
 import cromwell.engine.ExecutionStatus.{NotStarted, Running}
 import cromwell.engine.backend.{OldStyleCallMetadata, WorkflowDescriptorBuilder}
 import cromwell.engine.backend.local.OldStyleLocalBackend

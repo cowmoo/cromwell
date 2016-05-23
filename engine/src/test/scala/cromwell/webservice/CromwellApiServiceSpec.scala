@@ -3,10 +3,9 @@ package cromwell.webservice
 import java.util.UUID
 
 import akka.actor.{Actor, Props}
-import cromwell.core.{CallOutput, WorkflowId}
+import cromwell.core.{CallOutput, WorkflowAborted, WorkflowId, WorkflowRunning}
 import cromwell.engine.backend.{CallLogs, WorkflowDescriptorBuilder, WorkflowQueryResult}
 import cromwell.engine.workflow.OldStyleWorkflowManagerActor._
-import cromwell.engine.{WorkflowAborted, WorkflowRunning}
 import cromwell.server.WorkflowManagerSystem
 import cromwell.util.SampleWdl.HelloWorld
 import cromwell.webservice.CromwellApiHandler._

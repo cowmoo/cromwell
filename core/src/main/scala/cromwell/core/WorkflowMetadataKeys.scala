@@ -1,7 +1,5 @@
-package cromwell.database
+package cromwell.core
 
-
-// PBE this is an absolutely horrible place for this.
 object WorkflowMetadataKeys {
   val Name = "workflowName"
   val Id = "id"

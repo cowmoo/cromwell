@@ -8,7 +8,7 @@ import better.files.File
 import com.typesafe.config.{Config, ConfigFactory}
 import cromwell.CromwellTestkitSpec._
 import cromwell.backend._
-import cromwell.core.WorkflowId
+import cromwell.core.{WorkflowId, WorkflowState, WorkflowSucceeded}
 import cromwell.engine.ExecutionIndex.ExecutionIndex
 import cromwell.engine.backend.{BackendConfigurationEntry, CallLogs}
 import cromwell.engine.workflow.OldStyleWorkflowManagerActor

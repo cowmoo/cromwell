@@ -3,8 +3,7 @@ package cromwell.webservice
 import java.sql.Timestamp
 
 import akka.actor.{ActorRef, LoggingFSM, Props}
-import cromwell.core.WorkflowId
-import cromwell.database.WorkflowMetadataKeys
+import cromwell.core.{WorkflowId, WorkflowMetadataKeys}
 import cromwell.engine.ExecutionIndex.ExecutionIndex
 import cromwell.services.MetadataServiceActor._
 import cromwell.services.ServiceRegistryActor.ServiceRegistryFailure
